@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+# 
+default-members = [
+  "cashu-wallet",
+  "test-cashu",
+]
+members = [
+  "cashu-wallet",
+  "test-cashu",
+  "wallet-cli",
+  "store-sqlite",
+]
+
+[profile.release]
+# debug = true
+# split-debuginfo = "packed"
+# lto = "fat" 
+opt-level = 3
+# panic = "abort"
+
+[profile.dev]
+debug = 2

@@ -1,0 +1,10 @@
+/target
+*.red
+*.redb
+*.sqlite
+*.sqlite-wal
+cashu-wallet/logs
+cashu-wallet/src/bridge_generated.io.rs
+Cargo.lock
+sendc
+

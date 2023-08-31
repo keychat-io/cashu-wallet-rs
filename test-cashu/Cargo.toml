@@ -1,0 +1,17 @@
+[package]
+edition = "2021"
+name = "cashu-wallet-test"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cashu-wallet = {path = "../cashu-wallet"}
+cashu-wallet-sqlite = {path = "../store-sqlite"}
+tokio = {version = "1.28.1", features = ["sync", "rt", "macros", "rt-multi-thread"]}
+tracing = "0.1"
+tracing-subscriber = "0.3"
+# 
+anyhow = "1"
+serde = {version = "1", features = ["derive"]}
+serde_json = "1"
