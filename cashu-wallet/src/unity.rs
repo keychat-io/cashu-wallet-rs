@@ -398,7 +398,12 @@ where
             let ps = ps.into_extended_with_unit(unit);
             self.store.add_proofs(&mint_url, &ps).await?;
 
-            let token_str = wallet.proofs_to_token(&token.proofs, tokens.memo.clone(), unit)?;
+            let token_str = Wallet::proofs_to_token(
+                &token.proofs,
+                mint_url.clone(),
+                tokens.memo.clone(),
+                unit,
+            )?;
 
             let tx = CashuTransaction::new(
                 TransactionStatus::Success,
@@ -438,7 +443,7 @@ where
         info: Option<String>,
         allow_skip_split: bool,
     ) -> Result<Transaction, Error<S::Error>> {
-        let wallet = self.get_wallet(mint_url)?;
+        let mut wallet = self.get_wallet_optional(mint_url)?;
         let unit = unit.unwrap_or(CURRENCY_UNIT_SAT);
 
         let mut ps = self.store.get_proofs_limit_unit(mint_url, unit).await?;
@@ -448,7 +453,12 @@ where
         let tokens = if pss.sum().to_u64() == amount && allow_skip_split {
             SplitProofsExtended::new(pss.to_owned(), 0)
         } else {
+            if wallet.is_none() {
+                wallet = Some(self.get_wallet(mint_url)?);
+            }
             wallet
+                .as_ref()
+                .unwrap()
                 .send(amount.into(), pss, Some(unit), &self.store)
                 .await?
         };
@@ -456,7 +466,8 @@ where
         self.store.add_proofs(mint_url, tokens.keep()).await?;
         self.store.delete_proofs(mint_url, pss).await?;
 
-        let cashu_tokens = wallet.proofs_to_token(tokens.send().to_owned(), memo, Some(unit))?;
+        let cashu_tokens =
+            Wallet::proofs_to_token(tokens.send(), mint_url.clone(), memo, Some(unit))?;
 
         let mut tx: Transaction = CashuTransaction::new(
             TransactionStatus::Pending,

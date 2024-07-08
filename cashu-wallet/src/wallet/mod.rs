@@ -514,13 +514,13 @@ impl Wallet {
     }
 
     pub fn proofs_to_token(
-        &self,
         proofs: impl ProofsHelper,
+        url: MintUrl,
         memo: Option<String>,
         unit: Option<&str>,
     ) -> Result<String, Error> {
         let unit = unit.unwrap_or(CURRENCY_UNIT_SAT).into();
-        let t = TokenGeneric::new(self.client.url.clone(), proofs, memo, Some(unit))?;
+        let t = TokenGeneric::new(url, proofs, memo, Some(unit))?;
         Ok(t.to_string())
     }
 
