@@ -724,6 +724,7 @@ impl Wallet {
     }
 }
 
+// for auto fix count for mnemonic
 async fn try_to_call_swap<'s, 'l: 's>(
     client: &'s MintClient,
     proofs: impl ProofsHelper + Copy,
@@ -738,20 +739,22 @@ async fn try_to_call_swap<'s, 'l: 's>(
         let blinds = BlindedMessages::new(&outputs.messages.secrets);
         let swap_response = client.swap(proofs, &blinds).await;
 
-        let mut b = false;
-        match &swap_response {
-            Ok(_r) => {}
-            Err(e) => {
-                b = e.is_outputs_already_signed_before();
-                if b && i != 0 {
-                    continue;
+        if counter.mnemonic().is_some() {
+            let mut b = false;
+            match &swap_response {
+                Ok(_r) => {}
+                Err(e) => {
+                    b = e.is_outputs_already_signed_before();
+                    if b && i > 0 {
+                        continue;
+                    }
                 }
             }
-        }
 
-        // simple auto fix stale store
-        if swap_response.is_ok() || b {
-            counter.commit(store).await?;
+            // simple auto fix stale store
+            if swap_response.is_ok() || b {
+                counter.commit(store).await?;
+            }
         }
         return swap_response.map(|s| (outputs, s)).map_err(|e| e.into());
     }
@@ -787,6 +790,9 @@ impl<P: AsRef<Proof>> SplitProofsGeneric<P> {
     }
     pub fn all(&self) -> &[P] {
         &self.proofs
+    }
+    pub fn into_inner(self) -> (Vec<P>, usize) {
+        (self.proofs, self.send_idx_start)
     }
 }
 

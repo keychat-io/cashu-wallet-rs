@@ -125,6 +125,10 @@ where
         &self.store
     }
 
+    pub fn http_options(&self) -> &Arc<HttpOptions> {
+        &self.http_options
+    }
+
     pub fn mnemonic(&self) -> Option<&Arc<MnemonicInfo>> {
         self.mnemonic.as_ref()
     }
@@ -194,7 +198,7 @@ where
     }
 
     pub async fn add_mint(&self, mint_url: Url, reconnect: bool) -> Result<bool, Error<S::Error>> {
-        self.add_mint_with_units(mint_url, reconnect, &[CURRENCY_UNIT_SAT])
+        self.add_mint_with_units(mint_url, reconnect, &[CURRENCY_UNIT_SAT], None)
             .await
     }
     pub async fn add_mint_with_units(
@@ -202,12 +206,15 @@ where
         mint_url: Url,
         reconnect: bool,
         units: &[&str],
+        mut wallet: Option<Arc<Wallet>>,
     ) -> Result<bool, Error<S::Error>> {
         let url = mint_url.as_str().to_owned();
 
-        let mut old = self.get_wallet_optional(&mint_url)?;
-        let has = old.is_some();
-        if old.is_none() || reconnect {
+        if wallet.is_none() {
+            wallet = self.get_wallet_optional(&mint_url)?;
+        }
+        let has = wallet.is_some();
+        if wallet.is_none() || reconnect {
             let client = MintClient::new(mint_url.clone(), self.http_options.as_ref().clone())?;
 
             let w = Wallet::new(client, None, None, self.mnemonic.clone(), self.store()).await?;
@@ -230,9 +237,9 @@ where
                 lock.insert(url.clone(), w.clone());
             }
 
-            old = Some(w);
+            wallet = Some(w);
         }
-        let w = old.unwrap();
+        let w = wallet.unwrap();
 
         let mut mint = Mint::new(url.clone(), None);
         let record = self.store.get_mint(mint_url.as_str()).await?;
@@ -254,30 +261,16 @@ where
     pub async fn mints(&self) -> Result<Vec<Mint>, Error<S::Error>> {
         let mut mints = self.store.get_mints().await?;
         mints.retain(|m| m.active);
-
-        if mints.iter().any(|m| m.info.is_none()) {
-            let lock = self
-                .wallets
-                .read()
-                .map_err(|e| format_err!("wallets read {}", e))?;
-            for m in &mut mints {
-                if m.info.is_none() {
-                    m.info = lock.get(&m.url).map(|x| x.info.clone());
-                }
-            }
-        }
-
         Ok(mints)
     }
 
     /// load active mints from database::get_mints
     pub async fn load_mints_from_database(&self) -> Result<Vec<Mint>, Error<S::Error>> {
-        let mut mints = self.store.get_mints().await?;
-        mints.retain(|m| m.active);
+        let mints = self.mints().await?;
 
         for m in &mints {
             let mint_url = m.url.parse::<Url>()?;
-            self.add_mint_with_units(mint_url, false, &[]).await?;
+            self.add_mint_with_units(mint_url, false, &[], None).await?;
         }
 
         Ok(mints)

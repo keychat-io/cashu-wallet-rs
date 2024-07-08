@@ -65,9 +65,10 @@ pub enum ClientError {
 
 impl ClientError {
     pub fn is_outputs_already_signed_before(&self) -> bool {
+        // 11000 could not verify proofs.
         // 11000 outputs have already been signed before.
-        if let ClientError::Mint(c, d) = self {
-            if *c == 11000 || d.contains("outputs have already been signed before") {
+        if let ClientError::Mint(_c, d) = self {
+            if d.contains("outputs have already been signed before") {
                 return true;
             }
         }
