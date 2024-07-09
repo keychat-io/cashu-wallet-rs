@@ -109,6 +109,90 @@ fn get_ident_pubkey(mnemonic: &Mnemonic) -> anyhow::Result<String> {
     Ok(ident)
 }
 
+use super::Error;
+use tokio::sync::Mutex;
+use tokio::sync::OwnedMutexGuard as MutexGuard;
+#[derive(Debug, Default, Clone)]
+pub struct ManagerBox {
+    pub(super) manager: Option<Arc<Mutex<Manager>>>,
+}
+impl ManagerBox {
+    pub fn new(manager: Option<Arc<Mutex<Manager>>>) -> Self {
+        Self { manager }
+    }
+    pub async fn keyset0<'s, 'l: 's>(
+        &'s self,
+        unit: Option<&str>,
+        keysets: &'l [KeySet],
+    ) -> Result<&'l KeySet, Error> {
+        let unit = unit.unwrap_or(CURRENCY_UNIT_SAT);
+
+        let ks = if self.manager.is_none() {
+            keysets.iter().find(|k| k.unit.as_str() == unit)
+        } else {
+            let lock = self.manager.as_ref().unwrap().lock().await;
+            lock.counters
+                .iter()
+                .map(|c| c.keyset(keysets))
+                .find(|k| k.unit.as_str() == unit)
+        }
+        .ok_or_else(|| Error::Custom(format_err!("counters not find suitable keyset")))?;
+
+        Ok(ks)
+    }
+    pub async fn maybe_lock<'s>(&'s self) -> ManagerGuard {
+        let mut guard = None;
+        if let Some(lock) = self.manager.as_ref() {
+            let l = lock.clone().lock_owned().await;
+            guard = Some(l);
+        }
+        ManagerGuard {
+            guard,
+            counter: None,
+        }
+    }
+}
+
+pub struct ManagerGuard {
+    pub(super) guard: Option<MutexGuard<Manager>>,
+    counter: Option<Counter>,
+}
+impl ManagerGuard {
+    pub fn mnemonic(&self) -> Option<Arc<MnemonicInfo>> {
+        self.guard.as_deref().and_then(|m| m.mnemonic.clone())
+    }
+    pub fn start_count<'s, 'l: 's>(
+        &'s mut self,
+        unit: Option<&'l str>,
+        keysets: &'l [KeySet],
+    ) -> anyhow::Result<ManagerCounter<'s>> {
+        if let Some(g) = self.guard.as_mut() {
+            g.start_count(unit, keysets)
+        } else {
+            let unit = unit.unwrap_or(CURRENCY_UNIT_SAT);
+            if self.counter.is_none() {
+                let ks = keysets
+                    .iter()
+                    .find(|k| k.unit.as_str() == unit)
+                    .ok_or_else(|| format_err!("counters not find suitable keyset"))?;
+                let c = Record::new("nocommit", ks.id.to_string(), None)
+                    .to_counter(keysets)
+                    .expect("counters not find suitable keyset2");
+                self.counter = Some(c);
+            }
+            let counter = self.counter.as_mut().unwrap();
+
+            let mc = ManagerCounter {
+                keyset: counter.keyset(keysets),
+                mnemonic: None,
+                counter,
+            };
+
+            Ok(mc)
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Manager {
     pub(crate) mint_url: String,
@@ -162,11 +246,11 @@ impl Manager {
     }
 
     // lock for write state only success use the counter
-    pub fn start_count<'a>(
-        &'a mut self,
-        unit: Option<&'a str>,
-        keysets: &'a [KeySet],
-    ) -> anyhow::Result<ManagerCounter<'a>> {
+    pub fn start_count<'s, 'l: 's>(
+        &'s mut self,
+        unit: Option<&'l str>,
+        keysets: &'l [KeySet],
+    ) -> anyhow::Result<ManagerCounter<'s>> {
         let unit = unit.unwrap_or(CURRENCY_UNIT_SAT);
         let counter = self
             .counters
@@ -240,6 +324,8 @@ impl<'a> ManagerCounter<'a> {
         S::Error: 'static,
     {
         self.counter.record.counter = self.counter.state;
+
+        // commit to database
         if let Some(mi) = self.mnemonic {
             if self.counter.record.pubkey.is_empty() {
                 self.counter.record.pubkey = mi.pubkey.to_owned();

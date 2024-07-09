@@ -90,7 +90,7 @@ pub struct Wallet {
     pub(super) client: MintClient,
     pub(super) keysets: Vec<KeySet>,
     pub(super) info: MintInfo,
-    pub(super) counter: Option<Arc<Mutex<Manager>>>,
+    pub(super) counter: ManagerBox,
 }
 
 impl Wallet {
@@ -126,7 +126,7 @@ impl Wallet {
             client,
             keysets,
             info: info.unwrap(),
-            counter: None,
+            counter: Default::default(),
         };
 
         this.update_mnmonic(mnemonic, store).await?;
@@ -151,7 +151,10 @@ impl Wallet {
             .mnemonic(mnemonic)
             .records(records, &self.keysets);
 
-        let has = std::mem::replace(&mut self.counter, Some(Arc::new(Mutex::new(counter))));
+        let has = std::mem::replace(
+            &mut self.counter.manager,
+            Some(Arc::new(Mutex::new(counter))),
+        );
 
         Ok(has.is_some())
     }
@@ -161,17 +164,7 @@ impl Wallet {
     }
 
     pub async fn keyset0(&self, unit: Option<&str>) -> Result<&KeySet, Error> {
-        let unit = unit.unwrap_or(CURRENCY_UNIT_SAT);
-
-        let lock = self.counter.as_ref().unwrap().lock().await;
-        let ks = lock
-            .counters
-            .iter()
-            .map(|c| c.keyset(&self.keysets))
-            .find(|k| k.unit.as_str() == unit)
-            .ok_or_else(|| Error::Custom(format_err!("counters not find suitable keyset")))?;
-
-        Ok(ks)
+        self.counter.keyset0(unit, &self.keysets).await
     }
 
     /// Request Token Mint
@@ -181,9 +174,9 @@ impl Wallet {
         unit: Option<&str>,
         method: Option<&str>,
     ) -> Result<nut04::MintQuoteBolt11Response, Error> {
-        if self.info.nuts.nut04.disabled {
-            return Err(format_err!("token mint disabled").into());
-        }
+        // if self.info.nuts.nut04.disabled {
+        //     return Err(format_err!("token mint disabled").into());
+        // }
         Ok(self
             .client
             .request_mint(
@@ -227,7 +220,7 @@ impl Wallet {
         method: Option<&str>,
         store: impl RecordStore,
     ) -> Result<TokenExtened, Error> {
-        let mut lock = self.counter.as_ref().unwrap().lock().await;
+        let mut lock = self.counter.maybe_lock().await;
         let mut counter = lock.start_count(unit, &self.keysets)?;
 
         let proofs = self.mint(amount, &mut counter, hash, method).await?;
@@ -331,7 +324,7 @@ impl Wallet {
             return Ok(ps);
         }
 
-        let mut lock = self.counter.as_ref().unwrap().lock().await;
+        let mut lock = self.counter.maybe_lock().await;
         let mut counter = lock.start_count(unit, &self.keysets)?;
 
         // let outputs = PreMintSecretsHyper::split_amount(amount, &mut counter)?;
@@ -403,7 +396,7 @@ impl Wallet {
         //     return Ok(send);
         // }
 
-        let mut lock = self.counter.as_ref().unwrap().lock().await;
+        let mut lock = self.counter.maybe_lock().await;
         let mut counter = lock.start_count(currency_unit, &self.keysets)?;
 
         let amount_to_keep = amount_available - amount;
@@ -473,7 +466,7 @@ impl Wallet {
     ) -> Result<Melted, Error> {
         let keyset0 = self.keyset0(unit).await?;
 
-        let mut lock = self.counter.as_ref().unwrap().lock().await;
+        let mut lock = self.counter.maybe_lock().await;
         let mut counter = lock.start_count(unit, &self.keysets)?;
         let mut outputs = PreMintSecretsHyper::split_blank(fee_reserve, &mut counter)?;
         // let blinds = BlindedMessages::new(&outputs.secrets);
@@ -552,8 +545,8 @@ impl Wallet {
         ) -> bool,
     ) -> Result<(), Error> {
         if mi.is_none() {
-            let lock = self.counter.as_ref().unwrap().lock().await;
-            mi = lock.mnemonic.clone();
+            let lock = self.counter.maybe_lock().await;
+            mi = lock.mnemonic().clone();
         }
         let mi = mi.unwrap();
 
