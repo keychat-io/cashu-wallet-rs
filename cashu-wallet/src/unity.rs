@@ -210,36 +210,36 @@ where
     ) -> Result<bool, Error<S::Error>> {
         let url = mint_url.as_str().to_owned();
 
+        let w = self.get_wallet_optional(&mint_url)?;
+        let has = w.is_some();
         if wallet.is_none() {
-            wallet = self.get_wallet_optional(&mint_url)?;
+            wallet = w;
         }
-        let has = wallet.is_some();
+
         if wallet.is_none() || reconnect {
             let client = MintClient::new(mint_url.clone(), self.http_options.as_ref().clone())?;
-
             let w = Wallet::new(client, None, None, self.mnemonic.clone(), self.store()).await?;
-
-            if units.len() >= 1
-                && w.keysets
-                    .iter()
-                    .all(|ks| !units.contains(&ks.unit.as_str()))
-            {
-                return Err(format_err!("currency units not supported").into());
-            }
-
             let w = Arc::new(w);
-            {
-                let mut lock = self
-                    .wallets
-                    .write()
-                    .map_err(|e| format_err!("wallets write {}", e))?;
-
-                lock.insert(url.clone(), w.clone());
-            }
-
             wallet = Some(w);
         }
-        let w = wallet.unwrap();
+
+        let w = wallet.as_ref().expect("get wallet by add_mint_with_units");
+        if units.len() >= 1
+            && w.keysets
+                .iter()
+                .all(|ks| !units.contains(&ks.unit.as_str()))
+        {
+            return Err(format_err!("currency units not supported").into());
+        }
+
+        {
+            let mut lock = self
+                .wallets
+                .write()
+                .map_err(|e| format_err!("wallets write {}", e))?;
+
+            lock.insert(url.clone(), w.clone());
+        }
 
         let mut mint = Mint::new(url.clone(), None);
         let record = self.store.get_mint(mint_url.as_str()).await?;
