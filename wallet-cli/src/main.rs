@@ -53,7 +53,9 @@ async fn main() {
                 .timeout_swap_ms(timeout);
 
             if dburl.ends_with(".redb") || dburl.ends_with(".red") {
-                let db = Redb::open(dburl, Default::default()).unwrap();
+                let mut tables = cashu_wallet::store::impl_redb::Tables::default();
+                tables.ensure_delete_by_copy = true;
+                let db = Redb::open(dburl, tables).unwrap();
                 let w = UnitedWallet::new(db, c);
                 $opts.run(w).await
             } else if dburl.ends_with(".sqlite")

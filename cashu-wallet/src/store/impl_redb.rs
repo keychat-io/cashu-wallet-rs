@@ -9,6 +9,7 @@ use std::collections::BTreeMap as Map;
 use std::sync::Arc;
 use strum::EnumIs;
 
+// rename as conf?
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Tables {
     pub mints: &'static str,
@@ -18,6 +19,7 @@ pub struct Tables {
     /// add records for invoices
     pub transactions: &'static str,
     pub pending_transactions: &'static str,
+    pub ensure_delete_by_copy: bool,
 }
 
 impl Default for Tables {
@@ -29,6 +31,7 @@ impl Default for Tables {
             counters: "counters",
             transactions: "transactions",
             pending_transactions: "pending_transactions",
+            ensure_delete_by_copy: false,
         }
     }
 }
@@ -186,6 +189,18 @@ impl From<StoreError> for crate::unity::Error<StoreError> {
     }
 }
 
+use std::borrow::Cow;
+fn proof_to_json<'a>(p: &'a ProofExtended) -> serde_json::Result<Cow<'a, str>> {
+    let js = if p.js.is_empty() {
+        let json = serde_json::to_string(&p)?;
+        json.into()
+    } else {
+        p.js.as_str().into()
+    };
+
+    Ok(js)
+}
+
 #[async_trait]
 impl UnitedStore for Redb {
     type Error = StoreError;
@@ -280,14 +295,10 @@ impl UnitedStore for Redb {
             return Ok(());
         }
 
-        let mut ps: Vec<std::borrow::Cow<'_, str>> = Vec::with_capacity(proofs.len());
+        let mut ps = Vec::with_capacity(proofs.len());
         for p in proofs {
-            if p.js.is_empty() {
-                let json = serde_json::to_string(&p)?;
-                ps.push(json.into());
-            } else {
-                ps.push(p.js.as_str().into());
-            }
+            let json = proof_to_json(p)?;
+            ps.push(json);
         }
 
         debug!("del_proofs: {:?}", ps);
@@ -317,14 +328,10 @@ impl UnitedStore for Redb {
             return Ok(());
         }
 
-        let mut ps: Vec<std::borrow::Cow<'_, str>> = Vec::with_capacity(proofs.len());
+        let mut ps = Vec::with_capacity(proofs.len());
         for p in proofs {
-            if p.js.is_empty() {
-                let json = serde_json::to_string(&p)?;
-                ps.push(json.into());
-            } else {
-                ps.push(p.js.as_str().into());
-            }
+            let json = proof_to_json(p)?;
+            ps.push(json);
         }
 
         debug!("add_proofs: {:?}", ps);
@@ -363,10 +370,13 @@ impl UnitedStore for Redb {
             let json = kv.value();
             debug!("get.proofs: {}", json);
 
-            let p: ProofExtended = serde_json::from_str(json)?;
+            let mut p: ProofExtended = serde_json::from_str(json)?;
             let k = p.unit().unwrap_or(CURRENCY_UNIT_SAT);
             if k == unit {
-                proofs.push(p.json(json.to_owned()));
+                if self.tables().ensure_delete_by_copy {
+                    p = p.json(json.to_owned());
+                }
+                proofs.push(p);
             }
         }
 
@@ -388,14 +398,16 @@ impl UnitedStore for Redb {
             let json = kv.value();
             debug!("get.proofs: {}", json);
 
-            let p: ProofExtended = serde_json::from_str(json)?;
-
+            let mut p: ProofExtended = serde_json::from_str(json)?;
             let k = p.unit().unwrap_or(CURRENCY_UNIT_SAT);
             if !proofs.contains_key(k) {
                 proofs.insert(k.to_owned(), vec![]);
             }
             let ps: &mut Vec<_> = proofs.get_mut(k).unwrap();
-            ps.push(p.json(json.to_owned()));
+            if self.tables().ensure_delete_by_copy {
+                p = p.json(json.to_owned());
+            }
+            ps.push(p);
         }
 
         Ok(proofs
@@ -425,13 +437,16 @@ impl UnitedStore for Redb {
                 let json = kv.value();
                 debug!("get.proofs: {}", json);
 
-                let p: ProofExtended = serde_json::from_str(json)?;
+                let mut p: ProofExtended = serde_json::from_str(json)?;
                 let k = p.unit().unwrap_or(CURRENCY_UNIT_SAT);
                 if !proofs.contains_key(k) {
                     proofs.insert(k.to_owned(), vec![]);
                 }
                 let ps: &mut Vec<_> = proofs.get_mut(k).unwrap();
-                ps.push(p.json(json.to_owned()));
+                if self.tables().ensure_delete_by_copy {
+                    p = p.json(json.to_owned());
+                }
+                ps.push(p);
             }
 
             for (k, mut ps) in proofs.into_iter() {

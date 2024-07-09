@@ -9,6 +9,7 @@ version = "0.2.0"
 crate-type = ["rlib"]
 
 [features]
+# default = []
 
 # [dev-dependencies]
 [dependencies]
