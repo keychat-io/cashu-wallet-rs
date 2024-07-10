@@ -188,7 +188,8 @@ where
         let mut wallets = std::collections::BTreeMap::new();
         for (k, v) in &kvs {
             let mut w: Wallet = v.as_ref().clone();
-            w.update_mnmonic(mnemonic.clone(), &self.store).await?;
+            w.update_mnmonic(mnemonic.clone(), &self.store, None)
+                .await?;
             wallets.insert(k.clone(), w.into());
         }
 
@@ -218,7 +219,8 @@ where
 
         if wallet.is_none() || reconnect {
             let client = MintClient::new(mint_url.clone(), self.http_options.as_ref().clone())?;
-            let w = Wallet::new(client, None, None, self.mnemonic.clone(), self.store()).await?;
+            let mn = self.mnemonic.clone();
+            let w = Wallet::new(client, None, None, mn, self.store(), None).await?;
             let w = Arc::new(w);
             wallet = Some(w);
         }

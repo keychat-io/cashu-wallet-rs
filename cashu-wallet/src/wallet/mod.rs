@@ -100,6 +100,7 @@ impl Wallet {
         mut info: Option<MintInfo>,
         mnemonic: Option<Arc<MnemonicInfo>>,
         store: impl RecordStore,
+        records: Option<Vec<Record>>,
     ) -> Result<Self, Error> {
         if keysets.is_none() {
             let ks = client.get_keys(None).await?;
@@ -129,7 +130,7 @@ impl Wallet {
             counter: Default::default(),
         };
 
-        this.update_mnmonic(mnemonic, store).await?;
+        this.update_mnmonic(mnemonic, store, records).await?;
 
         Ok(this)
     }
@@ -138,13 +139,18 @@ impl Wallet {
         &mut self,
         mnemonic: Option<Arc<MnemonicInfo>>,
         store: impl RecordStore,
+        records: Option<Vec<Record>>,
     ) -> Result<bool, Error> {
-        let mut records = vec![];
-        if let Some(mi) = &mnemonic {
-            records = store
-                .get_records(self.client.url(), mi.pubkey())
-                .await
-                .map_err(|e| Error::Custom(e.into()))?;
+        let has = records.is_some();
+        let mut records = records.unwrap_or_default();
+
+        if !has {
+            if let Some(mi) = &mnemonic {
+                records = store
+                    .get_records(self.client.url(), mi.pubkey())
+                    .await
+                    .map_err(|e| Error::Custom(e.into()))?;
+            }
         }
 
         let counter = Manager::new(self.client.url())
@@ -952,7 +958,7 @@ mod tests {
             .timeout_swap_ms(5000);
         let client = MintClient::new(mint_url.parse().unwrap(), c)?;
 
-        let w = Wallet::new(client, None, None, None, ()).await?;
+        let w = Wallet::new(client, None, None, None, (), None).await?;
         let keys = w.keyset0(None).await.unwrap().keys.keys();
         #[rustfmt::skip]
         println!("keyset {}: {:?}", keys.len(), keys.keys().collect::<Vec<_>>());
