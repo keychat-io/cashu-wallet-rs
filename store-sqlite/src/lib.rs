@@ -107,11 +107,11 @@ impl LitePool {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Tables {
-    pub mints: &'static str,
-    pub proofs: &'static str,
-    pub counters: &'static str,
+    mints: &'static str,
+    proofs: &'static str,
+    counters: &'static str,
     /// add records for invoices
-    pub transactions: &'static str,
+    transactions: &'static str,
 }
 
 impl Default for Tables {
