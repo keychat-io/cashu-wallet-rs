@@ -558,6 +558,12 @@ where
 
     pub async fn check_pendings(&self) -> Result<(usize, usize), Error<S::Error>> {
         let pendings = self.store.get_pending_transactions().await?;
+        self.check_pendings_with(pendings).await
+    }
+    pub async fn check_pendings_with(
+        &self,
+        pendings: Vec<Transaction>,
+    ) -> Result<(usize, usize), Error<S::Error>> {
         // pendings.sort_unstable_by(|a, b|a.mint_url().cmp(&b.mint_url()));
 
         let pendings_count = pendings.len();
