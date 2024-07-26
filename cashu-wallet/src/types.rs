@@ -284,8 +284,16 @@ pub struct MintInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub motd: Option<String>,
     #[serde(default)]
-    pub contact: Vec<Vec<String>>,
+    pub contact: Vec<Contact>,
     pub nuts: Nuts,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Contact {
+    #[serde(default)]
+    method: String,
+    #[serde(default)]
+    info: String,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -375,12 +383,16 @@ pub mod tests {
     // curl https://testnut.cashu.space/v1/info
     // min_amount is null
     pub const INFO_TEST: &str = r#"{"name":"Cashu mint","pubkey":"0296d0aa13b6a31cf0cd974249f28c7b7176d7274712c95a41c7d8066d3f29d679","version":"Nutshell/0.15.3","contact":[["",""]],"nuts":{"4":{"methods":[{"method":"bolt11","unit":"sat"},{"method":"bolt11","unit":"usd"}],"disabled":false},"5":{"methods":[{"method":"bolt11","unit":"sat"},{"method":"bolt11","unit":"usd"}],"disabled":false},"7":{"supported":true},"8":{"supported":true},"9":{"supported":true},"10":{"supported":true},"11":{"supported":true},"12":{"supported":true}}}"#;
-    // curl https://mint.minibits.cash/Bitcoin/v1/info
 
     // curl https://bitcointxoko.com/cashu/api/v1/dMk78c5aR7uhHzcqH3Bwqp/v1/info
     // LNbitsCashu/0.4.5
     // publickey null
     pub const INFO_LNBITS: &str = r#"{"name":"STPI Cashu Mint","version":"LNbitsCashu/0.5","description":"STPI mint","description_long":"","nuts":{"4":{"methods":[["bolt11","sat"]],"disabled":true},"5":{"methods":[["bolt11","sat"]],"disabled":false},"7":{"supported":true},"8":{"supported":true},"9":{"supported":true},"10":{"supported":true},"11":{"supported":true},"12":{"supported":true}}}"#;
+
+    // Nutshell/0.16.0
+    pub const INFO_NUTSHELL16: &str = r#"{"name":"Cashu test mint","pubkey":"03e3d23e1b66eadaf15ce0d640a908e8ba1984baed34ab98c547aab4cf4249440d","version":"Nutshell/0.16.0","description":"This mint is for testing and development purposes only. Do not use this mint as a default mint in your application! Please use it with caution and only with very small amounts. Your Cashu client could have bugs. Accidents and bugs can lead to loss of funds for which we are not responsible for.","contact":[],"nuts":{"4":{"methods":[{"method":"bolt11","unit":"sat","min_amount":0,"max_amount":100000}],"disabled":false},"5":{"methods":[{"method":"bolt11","unit":"sat","min_amount":0,"max_amount":50000}],"disabled":false},"7":{"supported":true},"8":{"supported":true},"9":{"supported":true},"10":{"supported":true},"11":{"supported":true},"12":{"supported":true},"17":{"supported":[{"method":"bolt11","unit":"sat","commands":["bolt11_melt_quote","proof_state"]}]}}}"#;
+    // curl https://mint.minibits.cash/Bitcoin/v1/info
+    pub const INFO_MINIBITS_NUTSHELL16: &str = r#"{"name":"Minibits mint","pubkey":"023cf092fb60e21e8c367817c2c9d7471d796f6b75dc259e1a3320d5e53d489554","version":"Nutshell/0.16.0","description":"Minibits wallet mint. Minibits is an active research project in BETA, use at your own risk.","description_long":"Do not use with large amounts of ecash. Minibits mint is operated on a best-effort basis and without any guarantees.","contact":[{"method":"email","info":"support@minibits.cash"},{"method":"twitter","info":"@MinibitsCash"},{"method":"nostr","info":"npub1kvaln6tm0re4d99q9e4ma788wpvnw0jzkz595cljtfgwhldd75xsj9tkzv"}],"motd":"Message to users","nuts":{"4":{"methods":[{"method":"bolt11","unit":"sat","min_amount":0,"max_amount":1000000}],"disabled":false},"5":{"methods":[{"method":"bolt11","unit":"sat","min_amount":0,"max_amount":1000000}],"disabled":false},"7":{"supported":true},"8":{"supported":true},"9":{"supported":true},"10":{"supported":true},"11":{"supported":true},"12":{"supported":true},"17":{"supported":[{"method":"bolt11","unit":"sat","commands":["bolt11_melt_quote","proof_state","bolt11_mint_quote"]}]}}}"#;
 
     #[test]
     fn test_06_mint_information_pro() {
@@ -390,6 +402,9 @@ pub mod tests {
         assert!(js.nuts.nut04.methods.len() > 0);
         assert_eq!(js.nuts.nut05.disabled, false);
         assert!(js.nuts.nut05.methods.len() > 0);
+
+        let js: MintInfo = serde_json::from_str(INFO_NUTSHELL16).unwrap();
+        assert_eq!(js.name, "Cashu test mint");
     }
 
     #[test]
@@ -407,6 +422,16 @@ pub mod tests {
         let js: MintInfo = serde_json::from_str(INFO_LNBITS).unwrap();
         assert_eq!(js.name, "STPI Cashu Mint");
         assert_eq!(js.nuts.nut04.disabled, true);
+        assert!(js.nuts.nut04.methods.len() > 0);
+        assert_eq!(js.nuts.nut05.disabled, false);
+        assert!(js.nuts.nut05.methods.len() > 0);
+    }
+
+    #[test]
+    fn test_17_mint_information_minibits_16() {
+        let js: MintInfo = serde_json::from_str(INFO_MINIBITS_NUTSHELL16).unwrap();
+        assert_eq!(js.name, "Minibits mint");
+        assert_eq!(js.nuts.nut04.disabled, false);
         assert!(js.nuts.nut04.methods.len() > 0);
         assert_eq!(js.nuts.nut05.disabled, false);
         assert!(js.nuts.nut05.methods.len() > 0);
