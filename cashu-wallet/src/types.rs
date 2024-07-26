@@ -291,9 +291,9 @@ pub struct MintInfo {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Contact {
     #[serde(default)]
-    method: String,
+    pub method: String,
     #[serde(default)]
-    info: String,
+    pub info: String,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]

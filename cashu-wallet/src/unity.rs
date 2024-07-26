@@ -234,6 +234,12 @@ where
             return Err(format_err!("currency units not supported").into());
         }
 
+        // uniwallect depends on 07 to maintain database
+        if !w.info.nuts.nut07.supported {
+            let err = format_err!("the mint not support nut07: Token state check");
+            return Err(Error::Custom(err));
+        }
+
         {
             let mut lock = self
                 .wallets
