@@ -289,7 +289,7 @@ impl<T: ProofsHelper> MintProofsGeneric<T> {
 }
 
 /// wrap Url for compat all
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MintUrl {
     raw: Url,
 }

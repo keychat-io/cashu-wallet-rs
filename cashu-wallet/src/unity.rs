@@ -145,6 +145,15 @@ where
 
         Ok(urls)
     }
+    pub fn contains(&self, mint: &Url) -> Result<bool, Error<S::Error>> {
+        let has = self
+            .wallets
+            .read()
+            .map_err(|e| format_err!("wallets read {}", e))?
+            .contains_key(mint.as_str());
+
+        Ok(has)
+    }
 }
 
 impl<S> UnitedWallet<S>
@@ -375,19 +384,18 @@ where
         cashu_tokens: &str,
         txs: &mut Vec<Transaction>,
     ) -> Result<(), Error<S::Error>> {
-        self.receive_tokens_full_limit_unit(cashu_tokens, txs, &[])
+        let cashu_tokens: Token = cashu_tokens.parse()?;
+        self.receive_tokens_full_limit_unit(&cashu_tokens, txs, &[])
             .await
     }
 
     #[doc(hidden)]
     pub async fn receive_tokens_full_limit_unit(
         &self,
-        cashu_tokens: &str,
+        tokens: &Token,
         txs: &mut Vec<Transaction>,
         units: &[&str],
     ) -> Result<(), Error<S::Error>> {
-        let tokens: Token = cashu_tokens.parse()?;
-
         let unit = tokens.unit.as_ref().map(|s| s.as_str());
         if units.len() >= 1 && !units.contains(&unit.unwrap_or(CURRENCY_UNIT_SAT)) {
             return Err(Error::Custom(format_err!(
