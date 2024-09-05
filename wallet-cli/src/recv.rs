@@ -34,7 +34,7 @@ impl Opts {
 
         for (i, token) in self.tokens.iter().enumerate() {
             let prefix = "cashuA";
-            if token.len() > prefix.len() {
+            if token.starts_with(prefix) {
                 let token = &token[prefix.len()..];
 
                 use base64::{alphabet, engine::general_purpose, Engine};
@@ -54,8 +54,10 @@ impl Opts {
             if self.percoin {
                 use cashu_wallet::wallet::MintProofs;
                 use cashu_wallet::wallet::Token;
+                use cashu_wallet::wallet::TokenV3;
 
                 let tokens: Token = token.parse()?;
+                let tokens = tokens.into_v3()?;
                 let mut count = (0, 0, 0);
                 for (i2, t2) in tokens.token.into_iter().enumerate() {
                     // reorder for Rate limit exceeded.
@@ -88,7 +90,7 @@ impl Opts {
                             mint: t2.mint.clone(),
                             proofs: vec![p.clone()],
                         };
-                        let pt = Token {
+                        let pt = TokenV3 {
                             token: vec![mps],
                             memo: tokens.memo.clone(),
                             unit: tokens.unit.clone(),

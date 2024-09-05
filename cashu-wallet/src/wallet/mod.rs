@@ -29,8 +29,10 @@ pub use token::{
     ProofsHelper,
     //
     Token,
-    TokenExtened,
-    TokenGeneric,
+    TokenV3,
+    TokenV3Extened,
+    TokenV3Generic,
+    TokenV4,
 };
 
 pub use client::*;
@@ -225,14 +227,14 @@ impl Wallet {
         hash: &str,
         method: Option<&str>,
         store: impl RecordStore,
-    ) -> Result<TokenExtened, Error> {
+    ) -> Result<TokenV3Extened, Error> {
         let mut lock = self.counter.maybe_lock().await;
         let mut counter = lock.start_count(unit, &self.keysets)?;
 
         let proofs = self.mint(amount, &mut counter, hash, method).await?;
         counter.commit(store).await?;
 
-        let token = TokenGeneric::new(
+        let token = TokenV3Generic::new(
             self.client.url.clone(),
             proofs,
             None,
@@ -294,7 +296,7 @@ impl Wallet {
     /// Receive tokens belongs this url
     pub async fn receive(
         &self,
-        token: &Token,
+        token: &TokenV3,
         proofs: &mut ProofsExtended,
         store: impl RecordStore + Clone,
     ) -> Result<(), Error> {
@@ -523,10 +525,17 @@ impl Wallet {
         url: MintUrl,
         memo: Option<String>,
         unit: Option<&str>,
+        v4: bool,
     ) -> Result<String, Error> {
         let unit = unit.unwrap_or(CURRENCY_UNIT_SAT).parse()?;
-        let t = TokenGeneric::new(url, proofs, memo, Some(unit))?;
-        Ok(t.to_string())
+
+        if v4 {
+            let t = TokenV4::new(url, proofs, memo, Some(unit))?;
+            Ok(t.to_string())
+        } else {
+            let t = TokenV3Generic::new(url, proofs, memo, Some(unit))?;
+            Ok(t.to_string())
+        }
     }
 
     /// sleepms_after_check_a_batch for (code: 429): {"detail":"Rate limit exceeded."}
@@ -980,6 +989,7 @@ mod tests {
         // 400: {"detail":"Token already spent.","code":11001}
         let token = "cashuAeyJ0b2tlbiI6W3sibWludCI6Imh0dHBzOi8vODMzMy5zcGFjZTozMzM4IiwicHJvb2ZzIjpbeyJhbW91bnQiOjEsInNlY3JldCI6Iis2cmo4amIyR0FHUGVWQWJNM0tHeEg5OVQ3ek9VR1VxalQ2S2hLUUw0bUk9IiwiQyI6IjAzYTFlNDg2NmI3ZDU4MGM1ZjA3YjNkYzcyMmUwMWEyY2IyNDBkNjVmMjg5ZTQxYWE2Yjc3YmNkNjE1ZDA1ZDJlYiIsImlkIjoiSTJ5TitpUllma3pUIn0seyJhbW91bnQiOjEsInNlY3JldCI6Ikc5blhPSG1GQVBsYWQ0OWhPZTFlZXRscWkyZ2RkUFkyWk52aWxQZ3JPeXM9IiwiQyI6IjAyYjUwNGQ0MjVkYjlhY2ZhZjYxZjUwZGU0ZjUzNDQwMDliYWM2OWI4NDA0YThmMTY3OTg3YjA1MTA5NzhlNDE0ZSIsImlkIjoiSTJ5TitpUllma3pUIn0seyJhbW91bnQiOjEsInNlY3JldCI6Ik9MS21CaUhoTEZRV1Nmbm5NZENPdHdIV2FoWStNWFNJKytNNzJpbGVUOXM9IiwiQyI6IjAzN2NmZDhiMjRlZWRmZTM4ZDk2YmRkYzlhNGVmNGNjNDU1NmJkNWVjNWQ2ZjlhMzQ0ZTY5MWI2M2EzMjZjNmRmYiIsImlkIjoiSTJ5TitpUllma3pUIn0seyJhbW91bnQiOjEsInNlY3JldCI6IlFTcklLNllQZko3a3d5V3lLaEF2TjUwL2pmM1pKd0VlcGVpUGtLTE42WE09IiwiQyI6IjAzZGEzOGYzMDNiMmVlNDY4NTBkMzRlYzkwYWNkZDQyMzViZGFhNmM4YzMzZDJkMDRlNzNiMDQyMzU0MTBjZjhiNiIsImlkIjoiSTJ5TitpUllma3pUIn0seyJhbW91bnQiOjEsInNlY3JldCI6ImdmYmRWakMyZHRJbkpacGFHc0VPQmZ2dzNIQVFldzZqcGM1YVhETUIxVDQ9IiwiQyI6IjAyNDExN2UxNzhjZmE3Y2Y1OTE4NTBlYjI0NzNhN2E2N2Q0NTUxZTAyZjY3ZjQ1MDAxYmUyNzI2MWE1ZTNiZmMwYiIsImlkIjoiSTJ5TitpUllma3pUIn0seyJhbW91bnQiOjEsInNlY3JldCI6Im1MK2g4eWVKbVI1VCt1MFhOb1NWbzRpSWcrcTMrQ283bmhxZVVtN1JkQ009IiwiQyI6IjAyZDEzNWFlMDliNGVkMzg0ZmI4MTJjNjc3NDNlYjcxODhmZjgzNWUwNjJkY2YzMDEzM2UzNDc0NTUwYzk3ZWExNiIsImlkIjoiSTJ5TitpUllma3pUIn0seyJhbW91bnQiOjEsInNlY3JldCI6InNHMEVBVXdmWHhjWm9NajNjY3hYRzg1eVNOWTBNQW10MXVZYm9ZRkptM2M9IiwiQyI6IjAyZmMxODNlNzg0MTAyZDNiMjg5YjJiZjJmNzkzZTE0MzkzMTI2YWZhYWQxZGFiZjU1Nzk2NmZkM2EyYTEzNGJmNSIsImlkIjoiSTJ5TitpUllma3pUIn0seyJhbW91bnQiOjEsInNlY3JldCI6InlFTDdzT2tVRnh3bUVUNXhDbk5hT2ZoeEFJNmF1TVVLUmZjRmZyVlhvcVE9IiwiQyI6IjAyNWM4ZDQ4NTg5NjBlMWVlNzQyZjFhZmI3N2YwZWYyY2FmYWYxM2ZmOTEyM2I0NWYwYTJmYzEwODEzYmE2ZjhmNSIsImlkIjoiSTJ5TitpUllma3pUIn1dfV0sIm1lbW8iOm51bGx9";
         let t: Token = token.trim().parse().unwrap();
+        let t = t.into_v3().unwrap();
         let mut ps = vec![];
         let r = w.receive(&t, &mut ps, ()).await.unwrap_err();
         println!("receive spent {}: {:?}", ps.len(), r);

@@ -588,9 +588,9 @@ pub mod tests {
         Ok(())
     }
 
-    use crate::wallet::{MintProofsGeneric, TokenGeneric};
-    fn random_tokens(amounts: &[u64]) -> TokenGeneric<ProofsExtended> {
-        let mut tokens = TokenGeneric {
+    use crate::wallet::{MintProofsGeneric, TokenV3Generic};
+    fn random_tokens(amounts: &[u64]) -> TokenV3Generic<ProofsExtended> {
+        let mut tokens = TokenV3Generic {
             token: vec![],
             memo: None,
             unit: None,

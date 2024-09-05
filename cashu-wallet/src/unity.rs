@@ -397,6 +397,8 @@ where
         txs: &mut Vec<Transaction>,
         units: &[&str],
     ) -> Result<(), Error<S::Error>> {
+        let is_v4 = tokens.is_token_v_4();
+        let tokens = tokens.clone().into_v3()?;
         let unit = tokens.unit.as_ref().map(|s| s.as_str());
         if units.len() >= 1 && !units.contains(&unit.unwrap_or(CURRENCY_UNIT_SAT)) {
             return Err(Error::Custom(format_err!(
@@ -420,6 +422,7 @@ where
                 mint_url.clone(),
                 tokens.memo.clone(),
                 unit,
+                is_v4,
             )?;
 
             let tx = CashuTransaction::new(
@@ -484,7 +487,7 @@ where
         self.store.delete_proofs(mint_url, pss).await?;
 
         let cashu_tokens =
-            Wallet::proofs_to_token(tokens.send(), mint_url.clone(), memo, Some(unit))?;
+            Wallet::proofs_to_token(tokens.send(), mint_url.clone(), memo, Some(unit), true)?;
 
         let mut tx: Transaction = CashuTransaction::new(
             TransactionStatus::Pending,
@@ -615,6 +618,7 @@ where
 
             for i in 0..txs.len() {
                 let token: Token = txs[i].content().parse()?;
+                let token = token.into_v3()?;
 
                 let mut psc = 0;
                 // prevent empty

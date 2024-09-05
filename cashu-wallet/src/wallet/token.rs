@@ -188,13 +188,13 @@ impl ProofsHelper for &Proofs {
     }
 }
 
-pub type Token = TokenGeneric<Proofs>;
+pub type TokenV3 = TokenV3Generic<Proofs>;
 // pub type TokenRef = TokenGeneric<[Proof]>;
-pub type TokenExtened = TokenGeneric<ProofsExtended>;
+pub type TokenV3Extened = TokenV3Generic<ProofsExtended>;
 // pub type TokenExtenedRef = TokenGeneric<[ProofExtended]>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TokenGeneric<T: ProofsHelper> {
+pub struct TokenV3Generic<T: ProofsHelper> {
     pub token: Vec<MintProofsGeneric<T>>,
     /// Memo for token
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -204,7 +204,7 @@ pub struct TokenGeneric<T: ProofsHelper> {
     pub unit: Option<CurrencyUnit>,
 }
 
-impl<T: ProofsHelper> TokenGeneric<T> {
+impl<T: ProofsHelper> TokenV3Generic<T> {
     pub fn new(
         mint_url: MintUrl,
         proofs: T,
@@ -241,7 +241,7 @@ impl<T: ProofsHelper> TokenGeneric<T> {
     }
 }
 
-impl std::str::FromStr for Token {
+impl std::str::FromStr for TokenV3 {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -256,14 +256,13 @@ impl std::str::FromStr for Token {
         let decoded =
             general_purpose::GeneralPurpose::new(&alphabet::STANDARD, decode_config).decode(s)?;
         let decoded_str = String::from_utf8(decoded)?;
-        let token: Token = serde_json::from_str(&decoded_str)?;
+        let token: Self = serde_json::from_str(&decoded_str)?;
         Ok(token)
     }
 }
 
 use std::fmt;
-
-impl<T: ProofsHelper> fmt::Display for TokenGeneric<T> {
+impl<T: ProofsHelper> fmt::Display for TokenV3Generic<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let json_string = serde_json::to_string(self).map_err(|_| fmt::Error)?;
         let encoded = general_purpose::STANDARD.encode(json_string);
@@ -285,6 +284,202 @@ impl<T: ProofsHelper> MintProofsGeneric<T> {
             mint: mint_url,
             proofs,
         }
+    }
+}
+
+use cashu::nuts::nut00::ProofV4;
+impl Into<TokenV3> for TokenV4 {
+    fn into(self) -> TokenV3 {
+        let TokenV4 {
+            mint_url,
+            memo,
+            unit,
+            token,
+        } = self;
+
+        let mut proofs = Vec::with_capacity(token.iter().map(|t| t.proofs.len()).sum());
+        for t in token {
+            for p in t.proofs {
+                let ProofV4 {
+                    amount,
+                    secret,
+                    c,
+                    witness,
+                    dleq,
+                } = p;
+
+                let proof = Proof {
+                    keyset_id: t.keyset_id,
+                    amount,
+                    secret,
+                    c,
+                    witness,
+                    dleq,
+                };
+
+                proofs.push(proof);
+            }
+        }
+
+        TokenV3::new(mint_url, proofs, memo, unit).unwrap()
+    }
+}
+
+use cashu::nuts::nut00::token::TokenV4Token;
+/// Token V4
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenV4 {
+    /// Mint Url
+    #[serde(rename = "m")]
+    pub mint_url: MintUrl,
+    /// Token Unit
+    #[serde(rename = "u", skip_serializing_if = "Option::is_none")]
+    pub unit: Option<CurrencyUnit>,
+    /// Memo for token
+    #[serde(rename = "d", skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
+    /// Proofs
+    ///
+    /// Proofs separated by keyset_id
+    #[serde(rename = "t")]
+    pub token: Vec<TokenV4Token>,
+}
+
+impl TokenV4 {
+    pub fn new(
+        mint_url: MintUrl,
+        proofs: impl ProofsHelper,
+        memo: Option<String>,
+        unit: Option<CurrencyUnit>,
+    ) -> Result<Self, Error> {
+        let mut map = std::collections::BTreeMap::new();
+        for p in proofs.as_slice() {
+            let p = p.as_ref();
+            let id = p.keyset_id;
+            let proof = ProofV4 {
+                c: p.c,
+                amount: p.amount,
+                secret: p.secret.clone(),
+                witness: p.witness.clone(),
+                dleq: p.dleq.clone(),
+            };
+
+            let entry = map.entry(id).or_insert_with(Vec::new);
+            entry.push(proof);
+        }
+
+        let token = Self {
+            mint_url,
+            memo,
+            unit,
+            token: map
+                .into_iter()
+                .map(|(k, v)| TokenV4Token {
+                    keyset_id: k,
+                    proofs: v,
+                })
+                .collect(),
+        };
+
+        Ok(token)
+    }
+}
+
+impl fmt::Display for TokenV4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use serde::ser::Error;
+        let mut data = Vec::new();
+        ciborium::into_writer(self, &mut data).map_err(|e| fmt::Error::custom(e.to_string()))?;
+
+        let encode_config = general_purpose::GeneralPurposeConfig::new().with_encode_padding(false);
+        let encoded = GeneralPurpose::new(&alphabet::URL_SAFE, encode_config).encode(data);
+        write!(f, "cashuB{}", encoded)
+    }
+}
+
+use base64::engine::GeneralPurpose;
+impl std::str::FromStr for TokenV4 {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.strip_prefix("cashuB").ok_or(Error::UnsupportedToken)?;
+        let decode_config = general_purpose::GeneralPurposeConfig::new()
+            .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent);
+        let decoded = GeneralPurpose::new(&alphabet::URL_SAFE, decode_config).decode(s)?;
+        let token: TokenV4 = ciborium::from_reader(&decoded[..])?;
+
+        // prevent empty token
+        if token.token.iter().map(|t| t.proofs.len()).sum::<usize>() == 0 {
+            return Err(Error::ProofsRequired);
+        }
+        Ok(token)
+    }
+}
+
+use strum::EnumIs;
+/// Token Enum
+#[derive(EnumIs, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Token {
+    /// Token V3
+    TokenV3(TokenV3),
+    /// Token V4
+    TokenV4(TokenV4),
+}
+
+impl Into<Token> for TokenV3 {
+    fn into(self) -> Token {
+        Token::TokenV3(self)
+    }
+}
+impl Into<Token> for TokenV4 {
+    fn into(self) -> Token {
+        Token::TokenV4(self)
+    }
+}
+
+impl Token {
+    pub fn into_v3(self) -> Result<TokenV3, Error> {
+        let t = match self {
+            Token::TokenV3(t) => t,
+            Token::TokenV4(t) => t.into(),
+        };
+        Ok(t)
+    }
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let token = match self {
+            Self::TokenV3(token) => token.to_string(),
+            Self::TokenV4(token) => token.to_string(),
+        };
+
+        write!(f, "{}", token)
+    }
+}
+
+impl std::str::FromStr for Token {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() < 7 {
+            return Err(Error::UnsupportedToken);
+        }
+        let prefix6 = &s[..6];
+        let token = match prefix6 {
+            "cashuB" => {
+                let t = TokenV4::from_str(s)?;
+                Self::TokenV4(t)
+            }
+            "cashuA" => {
+                let t = TokenV3::from_str(s)?;
+                Self::TokenV3(t)
+            }
+            _ => return Err(Error::UnsupportedToken),
+        };
+
+        Ok(token)
     }
 }
 
@@ -451,5 +646,28 @@ pub mod tests {
         assert_eq!(up.as_str(), u);
         assert_eq!(up2.as_str(), u2);
         assert_ne!(up.as_str(), up2.as_str());
+    }
+
+    #[test]
+    fn test_token() {
+        let v4 = r#"cashuBo2FteCJodHRwczovL21pbnQubWluaWJpdHMuY2FzaC9CaXRjb2luYXVjc2F0YXSBomFpSABQBVDwSUFGYXCCo2FhAmFzeEAxMGE5YjNlOWE5NmJmYjhlMGE2ZGJlMTY3YzA3YzhlYmUxYWQ0MjZhNTZmOGE4MjU4MDM2ODQ4ZmNlMzAzMDYxYWNYIQKVA4ylDqbmnxzWfDlVnrgvVxzDGCrQGjoHeMfrCsFFt6NhYQhhc3hAZGI5YjM5YjBkNDZhNWM0ZmY4ODc2OGRhNTI4MWE0ZmJmNjcyYzE1MTZiODU0NjE0OGU2NmI5N2NlYmQyY2RlOGFjWCED1RAJOBqPXGmpp0m1q5-MYiGf8s5q3klYdZ0PCcCfgiw"#;
+        let t4 = v4.parse::<Token>().unwrap();
+        let t3 = t4.clone().into_v3().unwrap();
+        let v3 = t3.to_string();
+        let t = v3.parse::<Token>().unwrap().into_v3().unwrap();
+        assert_eq!(t3, t);
+
+        let t4new = TokenV4::new(
+            t.token[0].mint.clone(),
+            &t.token[0].proofs,
+            t.memo.clone(),
+            t.unit,
+        )
+        .unwrap();
+        let v42 = t4new.to_string();
+
+        println!("{:?}", t4);
+        println!("{:?}", t4new);
+        assert_eq!(v4, v42);
     }
 }

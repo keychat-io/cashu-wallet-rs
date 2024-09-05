@@ -73,17 +73,17 @@ pub struct MnemonicInfo {
 }
 
 impl MnemonicInfo {
-    pub fn new(mnemonic: Mnemonic) -> anyhow::Result<Self> {
+    pub fn new(mnemonic: &Mnemonic) -> anyhow::Result<Self> {
         let (key, pubkey) = get_keys(&mnemonic)?;
         Ok(Self { key, pubkey })
     }
     pub fn with_words(words: &str) -> anyhow::Result<Self> {
         let mnemonic = words.parse()?;
-        Self::new(mnemonic)
+        Self::new(&mnemonic)
     }
-    pub fn generate(words: usize) -> anyhow::Result<Self> {
+    pub fn generate_words(words: usize) -> anyhow::Result<String> {
         let mnemonic = Mnemonic::generate(words)?;
-        Self::new(mnemonic)
+        Ok(mnemonic.to_string())
     }
     pub fn pubkey(&self) -> &str {
         &self.pubkey
