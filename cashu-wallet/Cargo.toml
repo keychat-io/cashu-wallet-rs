@@ -34,8 +34,8 @@ bitcoin_hashes = "0.12.0"
 #
 bip39 = {version = "2.0", features = ["rand"]}
 bitcoin = {version = "0.30", features = ["serde", "rand", "rand-std"]}
-cashu = {package = "cdk", default-features = false, features = ["all-nuts"], git = "https://github.com/keychat-io/cdk", branch = "public1"}
-# cashu = {package = "cdk", default-features = false, features = ["all-nuts"], path = "../../cashu-crab/crates/cdk"}
+# cashu = {package = "cdk", default-features = false, features = ["all-nuts"], git = "https://github.com/keychat-io/cdk", branch = "public1"}
+cashu = {package = "cdk", default-features = false, features = ["wallet"], path = "../../cdk/crates/cdk"}
 # test
 rand = "0.8"
 tempfile = "3"

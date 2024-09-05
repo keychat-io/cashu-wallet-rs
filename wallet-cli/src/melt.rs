@@ -1,5 +1,6 @@
 use crate::opts::MeltOpts as Opts;
 
+use cashu_wallet::cashu::nuts::nut05::QuoteState;
 use cashu_wallet::cashu::nuts::MeltQuoteBolt11Response;
 use cashu_wallet::store::UnitedStore;
 use cashu_wallet::{UniError, UniErrorFrom, UnitedWallet};
@@ -12,15 +13,18 @@ impl Opts {
     {
         let mut quote_response = Some(MeltQuoteBolt11Response {
             quote: String::new(),
-            amount: 0,
-            fee_reserve: 0,
+            amount: 0.into(),
+            fee_reserve: 0.into(),
             expiry: 0,
-            paid: false,
+            paid: Some(false),
+            state: QuoteState::Unpaid,
+            change: None,
+            payment_preimage: None,
         });
 
         let res = self.fun(wallet, quote_response.as_mut()).await;
         if let Some(qr) = quote_response {
-            if qr.amount > 0 {
+            if *qr.amount.as_ref() > 0u64 {
                 println!("{:?}", qr)
             }
         }

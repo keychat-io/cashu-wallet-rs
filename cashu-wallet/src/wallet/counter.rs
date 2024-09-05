@@ -1,5 +1,7 @@
 use super::MintUrl as Url;
 pub use bip39::Mnemonic;
+
+use bitcoin::bip32::ExtendedPrivKey;
 use cashu::nuts::nut02::Id as KeySetId;
 use cashu::nuts::nut02::KeySet;
 use cashu::nuts::BlindedMessage;
@@ -65,14 +67,15 @@ impl Counter {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MnemonicInfo {
-    mnemonic: Mnemonic,
+    // mnemonic: Mnemonic,
+    key: ExtendedPrivKey,
     pubkey: String,
 }
 
 impl MnemonicInfo {
     pub fn new(mnemonic: Mnemonic) -> anyhow::Result<Self> {
-        let pubkey = get_ident_pubkey(&mnemonic)?;
-        Ok(Self { mnemonic, pubkey })
+        let (key, pubkey) = get_keys(&mnemonic)?;
+        Ok(Self { key, pubkey })
     }
     pub fn with_words(words: &str) -> anyhow::Result<Self> {
         let mnemonic = words.parse()?;
@@ -85,14 +88,14 @@ impl MnemonicInfo {
     pub fn pubkey(&self) -> &str {
         &self.pubkey
     }
-    pub fn mnemonic(&self) -> &Mnemonic {
-        &self.mnemonic
-    }
+    // pub fn mnemonic(&self) -> &Mnemonic {
+    //     &self.mnemonic
+    // }
 }
 
 /// m / 129372' / 0' / keyset_k_int' / counter' / secret||r
 /// m / 129372' / 0'
-fn get_ident_pubkey(mnemonic: &Mnemonic) -> anyhow::Result<String> {
+fn get_keys(mnemonic: &Mnemonic) -> anyhow::Result<(ExtendedPrivKey, String)> {
     use bitcoin::bip32::{DerivationPath, ExtendedPrivKey};
     use bitcoin::Network;
     use cashu::SECP256K1;
@@ -106,7 +109,7 @@ fn get_ident_pubkey(mnemonic: &Mnemonic) -> anyhow::Result<String> {
         .to_keypair(&SECP256K1)
         .public_key()
         .to_string();
-    Ok(ident)
+    Ok((bip32_root_key, ident))
 }
 
 use super::Error;
@@ -345,8 +348,8 @@ impl<'a> ManagerCounter<'a> {
         let secret;
         let blinding_factor;
         if let Some(mi) = &self.mnemonic {
-            secret = Secret::from_seed(&mi.mnemonic, keyset.id, count)?;
-            blinding_factor = SecretKey::from_seed(&mi.mnemonic, keyset.id, count)?;
+            secret = Secret::from_xpriv(mi.key, keyset.id, count as _)?;
+            blinding_factor = SecretKey::from_xpriv(mi.key, keyset.id, count as _)?;
         } else {
             secret = Secret::generate();
             blinding_factor = SecretKey::generate();

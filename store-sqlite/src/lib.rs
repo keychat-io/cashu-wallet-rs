@@ -142,7 +142,7 @@ impl Tables {
     }
 }
 
-use cashu_wallet::cashu::nuts::{nut11::Signatures, nut12::ProofDleq};
+use cashu_wallet::cashu::nuts::{nut00::Witness, nut12::ProofDleq};
 use cashu_wallet::store::UnitedStore;
 use cashu_wallet::wallet::{Proof, ProofExtended, ProofsExtended, Record};
 use cashu_wallet::{ParseError, Url};
@@ -268,7 +268,7 @@ macro_rules! proof_from_row {
 
         let js = $row.get::<'_, Option<String>, _>(8);
         if let Some(js) = js {
-            let dleq = serde_json::from_str::<Signatures>(&js)?;
+            let dleq = serde_json::from_str::<Witness>(&js)?;
             p.witness = Some(dleq);
         }
 

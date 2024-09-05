@@ -202,7 +202,7 @@ impl Wallet {
         method: Option<&'l str>,
     ) -> Result<ProofsExtended, Error> {
         let outputs = PreMintSecretsHyper::split_amount(amount, counter)?;
-        let blinds = BlindedMessages::new(&outputs.secrets);
+        let blinds = BlindedMessages::new(&outputs);
 
         let mint_res = self
             .client
@@ -477,10 +477,10 @@ impl Wallet {
         let mut outputs = PreMintSecretsHyper::split_blank(fee_reserve, &mut counter)?;
         // let blinds = BlindedMessages::new(&outputs.secrets);
 
-        for p in &mut outputs.secrets {
+        for p in &mut outputs {
             p.amount = 1.into();
         }
-        let blinds = BlindedMessages::new(&outputs.secrets);
+        let blinds = BlindedMessages::new(&outputs);
 
         let melt_response = self
             .client
@@ -503,8 +503,14 @@ impl Wallet {
         // skip some is work
         counter.commit(store).await?;
 
+        let state = if melt_response.paid {
+            nut05::QuoteState::Paid
+        } else {
+            nut05::QuoteState::Unpaid
+        };
+
         let melted = Melted {
-            paid: melt_response.paid,
+            state,
             preimage: melt_response.payment_preimage,
             change: change_proofs,
         };
@@ -518,7 +524,7 @@ impl Wallet {
         memo: Option<String>,
         unit: Option<&str>,
     ) -> Result<String, Error> {
-        let unit = unit.unwrap_or(CURRENCY_UNIT_SAT).into();
+        let unit = unit.unwrap_or(CURRENCY_UNIT_SAT).parse()?;
         let t = TokenGeneric::new(url, proofs, memo, Some(unit))?;
         Ok(t.to_string())
     }
@@ -588,7 +594,7 @@ impl Wallet {
             let mut emptys = 0usize;
             while emptys < 3 {
                 let mut outputs = PreMintSecretsHyper::split_blanks(batch_size, &mut counter)?;
-                let blinds = BlindedMessages::new(&outputs.secrets);
+                let blinds = BlindedMessages::new(&outputs);
                 f(
                     self.client().url().as_str(),
                     keysetids.len(),
@@ -598,7 +604,7 @@ impl Wallet {
                     counter.before(),
                     batch_size,
                     counter.now(),
-                    Some(&outputs.secrets),
+                    Some(&outputs),
                     None,
                     None,
                     None,
@@ -623,7 +629,7 @@ impl Wallet {
                     counter.before(),
                     batch_size,
                     counter.now(),
-                    Some(&outputs.secrets),
+                    Some(&outputs),
                     Some(&resp.outputs),
                     Some(&signatures),
                     None,
@@ -632,18 +638,15 @@ impl Wallet {
                 if !resp.outputs.is_empty() {
                     let last = resp.outputs.last().unwrap();
                     let lastidx = outputs
-                        .secrets
                         .iter()
                         .rposition(|it| it.blinded_message == *last)
                         .map(|p| p + 1)
-                        .unwrap_or(outputs.secrets.len()) as u64;
+                        .unwrap_or(outputs.len()) as u64;
 
                     offset = counter.before() + lastidx;
                 }
 
-                outputs
-                    .secrets
-                    .retain(|x| resp.outputs.contains(&x.blinded_message));
+                outputs.retain(|x| resp.outputs.contains(&x.blinded_message));
 
                 // #[rustfmt::skip]
                 // info!("{}~{}-{}: got outputs {}:\n{}", counter.before(), counter.now(), batch_size, resp.outputs.len(), serde_json::to_string(&resp.outputs).unwrap());
@@ -651,7 +654,10 @@ impl Wallet {
                 // info!("{}~{}-{}: got signatures {}:\n{}", counter.before(), counter.now(), batch_size, signatures.len(), serde_json::to_string(&signatures).unwrap());
 
                 let ps = process_swap_response::<ProofExtended>(outputs, signatures, &keyset.keys)?;
-                let states = self.check_proofs(&ps).await?.states;
+                let mut states = vec![];
+                if ps.len() >= 1 {
+                    states = self.check_proofs(&ps).await?.states;
+                }
                 if states.len() != ps.len() {
                     return Err(Error::Custom(format_err!(
                         "check_proofs mint retures states size unexpected"
@@ -735,7 +741,7 @@ async fn try_to_call_swap<'s, 'l: 's>(
 ) -> Result<(PreMintSecretsHyper, SwapResponse), Error> {
     for i in (0..3).rev() {
         let outputs = PreMintSecretsHyper::split_amount2(keep, send, denomination, counter)?;
-        let blinds = BlindedMessages::new(&outputs.messages.secrets);
+        let blinds = BlindedMessages::new(&outputs.messages);
         let swap_response = client.swap(proofs, &blinds).await;
 
         if counter.mnemonic().is_some() {
@@ -798,13 +804,13 @@ impl<P: AsRef<Proof>> SplitProofsGeneric<P> {
 /// Wrap for generate output BlindedMessages
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct PreMintSecretsHyper {
-    pub messages: PreMintSecrets,
+    pub messages: Vec<PreMint>,
     pub(crate) send_idx_start: usize,
 }
 
 impl PreMintSecretsHyper {
-    pub fn new(messages: PreMintSecrets, send_idx_start: usize) -> Self {
-        assert!(send_idx_start <= messages.secrets.len());
+    pub fn new(messages: Vec<PreMint>, send_idx_start: usize) -> Self {
+        assert!(send_idx_start <= messages.len());
 
         Self {
             messages,
@@ -820,12 +826,12 @@ impl PreMintSecretsHyper {
     pub fn split_blank(
         fee_reserve: Amount,
         counter: &mut ManagerCounter,
-    ) -> Result<PreMintSecrets, Error> {
+    ) -> Result<Vec<PreMint>, Error> {
         let count = ((u64::from(fee_reserve) as f64).log2().ceil() as u64).max(1);
         Self::split_blanks(count, counter)
     }
 
-    pub fn split_blanks(count: u64, counter: &mut ManagerCounter) -> Result<PreMintSecrets, Error> {
+    pub fn split_blanks(count: u64, counter: &mut ManagerCounter) -> Result<Vec<PreMint>, Error> {
         let mut secrets = Vec::with_capacity(count as usize);
         for _ in 0..count {
             let c = counter.count();
@@ -833,14 +839,14 @@ impl PreMintSecretsHyper {
             secrets.push(p);
         }
 
-        Ok(PreMintSecrets { secrets })
+        Ok(secrets)
     }
 
     // mint token
     pub fn split_amount(
         amount: Amount,
         counter: &mut ManagerCounter,
-    ) -> Result<PreMintSecrets, Error> {
+    ) -> Result<Vec<PreMint>, Error> {
         Self::split_amount2(amount, 0.into(), 0.into(), counter).map(|s| s.messages)
     }
 
@@ -891,19 +897,17 @@ impl PreMintSecretsHyper {
             secrets.push(p);
         }
 
-        let messages = PreMintSecrets { secrets };
-
-        Ok(Self::new(messages, splited_keep_len))
+        Ok(Self::new(secrets, splited_keep_len))
     }
 }
 
 /// generate Proofs from swaps response
 pub fn process_swap_response<P: From<Proof>>(
-    pre_secrets: PreMintSecrets,
+    pre_secrets: Vec<PreMint>,
     promises: Vec<BlindSignature>,
     keys: &Keys,
 ) -> Result<Vec<P>, Error> {
-    let pre_secrets = pre_secrets.secrets;
+    let pre_secrets = pre_secrets;
     if pre_secrets.len() < promises.len() {
         Err(Error::Custom(format_err!(
             "promises size unexpected: promises: {}, pre_secrets: {}",

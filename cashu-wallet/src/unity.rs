@@ -1,6 +1,7 @@
 pub use crate::wallet::MintUrl as Url;
 pub use cashu;
 use cashu::nuts::nut00;
+use cashu::nuts::nut05;
 pub use url::ParseError;
 
 use std::collections::BTreeMap;
@@ -884,7 +885,7 @@ where
             *q = form.clone();
         }
 
-        let amount_with_fee = amount + fee;
+        let amount_with_fee = amount + fee.as_ref();
 
         let mut ps = self.store.get_proofs_limit_unit(mint_url, unit).await?;
         let select = select_send_proofs(amount_with_fee, &mut ps)?;
@@ -923,12 +924,12 @@ where
             let remain = remain.into_extended_with_unit(Some(unit));
             self.store.add_proofs(mint_url, &remain).await?;
             let ra = remain.sum();
-            if fee >= ra.to_u64() {
-                fee -= ra.to_u64();
+            if fee >= ra {
+                fee -= ra;
             }
         }
 
-        if pm.paid {
+        if pm.state == nut05::QuoteState::Paid {
             self.store.delete_proofs(mint_url, ps2.send()).await?;
             // return Err(format_err!("mint server reponse not paid").into());
         }
@@ -937,14 +938,14 @@ where
         let hash = form.quote;
 
         let txln: Transaction = LNTransaction::new(
-            if pm.paid {
+            if pm.state == nut05::QuoteState::Paid {
                 TransactionStatus::Success
             } else {
                 TransactionStatus::Failed
             },
             TransactionDirection::Out,
             amount,
-            Some(fee),
+            Some(fee.into()),
             mint_url.as_str(),
             &invoice_str,
             &hash,
