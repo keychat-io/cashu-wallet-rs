@@ -2,8 +2,6 @@ use std::error::Error as StdError;
 
 use std::collections::BTreeMap as Map;
 
-pub mod impl_redb;
-
 pub use crate::wallet::{MintUrl as Url, Proof, ProofExtended, Proofs, ProofsExtended, Record};
 
 use crate::types::Mint;

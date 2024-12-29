@@ -30,7 +30,6 @@ async fn main() {
             .init()
     }
 
-    use cashu_wallet::store::impl_redb::Redb;
     use cashu_wallet::wallet::HttpOptions;
     use cashu_wallet::UnitedWallet;
     use cashu_wallet_sqlite::LitePool;
@@ -52,16 +51,7 @@ async fn main() {
                 .timeout_connect_ms(3000)
                 .timeout_swap_ms(timeout);
 
-            if dburl.ends_with(".redb") || dburl.ends_with(".red") {
-                let mut tables = cashu_wallet::store::impl_redb::Tables::default();
-                tables.ensure_delete_by_copy = true;
-                let db = Redb::open(dburl, tables).unwrap();
-                let w = UnitedWallet::new(db, c);
-                $opts.run(w).await
-            } else if dburl.ends_with(".sqlite")
-                || dburl.ends_with(".sqlite3")
-                || dburl.ends_with(".db")
-            {
+            if dburl.ends_with(".sqlite") || dburl.ends_with(".sqlite3") || dburl.ends_with(".db") {
                 let db = LitePool::open(dburl, Default::default()).await.unwrap();
                 let w = UnitedWallet::with_mnemonic(db, c, mnemonic);
                 $opts.run(w).await

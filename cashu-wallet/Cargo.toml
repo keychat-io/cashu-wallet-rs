@@ -24,7 +24,6 @@ strum = {version = "0.25", features = ["derive"]}
 thiserror = "1" 
 #
 async-trait = "0.1.73"
-redb = "2.1.1"
 reqwest = {version = "0.11.20", features =["serde_json", "json", "rustls-tls", "gzip"], default-features = false}
 tokio = {version = "1.28.1", features = ["sync", "rt", "macros"]}
 url = {version = "2.4.0", features = ["serde"]}

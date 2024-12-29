@@ -20,7 +20,6 @@ use crate::wallet::{AmountHelper, ProofsHelper, Token, Wallet};
 use crate::wallet::{HttpOptions, MintClient};
 use crate::wallet::{Proof, SplitProofsExtended};
 
-use crate::store::impl_redb::StoreError;
 use crate::store::MintUrlWithUnitOwned;
 use crate::store::UnitedStore;
 
@@ -35,7 +34,7 @@ use cashu::Bolt11Invoice;
 #[derive(Debug)]
 //
 #[derive(strum::EnumIs, thiserror::Error)]
-pub enum UniError<E: StdError = StoreError> {
+pub enum UniError<E: StdError> {
     /// mint url unmatched
     #[error("Mint url unmatched")]
     MintUrlUnmatched,
