@@ -314,7 +314,7 @@ impl Into<TokenV3> for TokenV4 {
                     secret,
                     c,
                     witness,
-                    dleq,
+                    dleq: dleq.map(|d| d.into()),
                 };
 
                 proofs.push(proof);
@@ -361,7 +361,7 @@ impl TokenV4 {
                 amount: p.amount,
                 secret: p.secret.clone(),
                 witness: p.witness.clone(),
-                dleq: p.dleq.clone(),
+                dleq: p.dleq.clone().map(|d| d.into()),
             };
 
             let entry = map.entry(id).or_insert_with(Vec::new);

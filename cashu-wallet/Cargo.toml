@@ -34,7 +34,7 @@ bitcoin_hashes = "0.12.0"
 ciborium = { version = "0.2.2", default-features = false, features = ["std"] }
 bip39 = {version = "2.0", features = ["rand"]}
 bitcoin = {version = "0.30", features = ["serde", "rand", "rand-std"]}
-cashu = {package = "cdk", default-features = false, features = [], git = "https://github.com/keychat-io/cdk", branch = "public-000300"}
+cashu = {package = "cdk", default-features = false, features = [], git = "https://github.com/keychat-io/cdk", branch = "public-000301"}
 # cashu = {package = "cdk", default-features = false, features = [], path = "../../cdk/crates/cdk"}
 # test
 rand = "0.8"
