@@ -24,6 +24,7 @@ impl Opts {
         S: UnitedStore + Clone + Send + Sync + 'static,
         UniError<S::Error>: UniErrorFrom<S>,
     {
+        // let tokens: cashu_wallet::wallet::Token = self.tokens[0].parse().unwrap();
         let _mints = wallet
             .load_mints_from_database()
             .await
