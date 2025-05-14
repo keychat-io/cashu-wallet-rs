@@ -112,7 +112,7 @@ impl Transaction {
 
     pub fn fee(&self) -> Option<u64> {
         match self {
-            Transaction::Cashu(_) => None,
+            Transaction::Cashu(transaction) => transaction.fee,
             Transaction::LN(transaction) => transaction.fee,
         }
     }
@@ -145,6 +145,7 @@ pub struct CashuTransaction {
     pub info: Option<String>,
     pub time: u64,
     pub amount: u64,
+    pub fee: Option<u64>,
     pub mint: String,
     pub token: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -163,6 +164,7 @@ impl CashuTransaction {
         io: TransactionDirection,
         amount: u64,
         mint: &str,
+        fee: Option<u64>,
         token: &str,
         time: Option<u64>,
         unit: Option<&str>,
@@ -172,6 +174,7 @@ impl CashuTransaction {
             status,
             io,
             amount,
+            fee,
             info: None,
             time: time.unwrap_or_else(unixtime_ms),
             mint: mint.to_string(),

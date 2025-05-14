@@ -93,6 +93,7 @@ pub struct Wallet {
     pub(super) keysets: Vec<KeySet>,
     pub(super) info: MintInfo,
     pub(super) counter: ManagerBox,
+    pub(super) keysetinfo: Vec<KeySetInfo>,
 }
 
 impl Wallet {
@@ -108,6 +109,8 @@ impl Wallet {
             let ks = client.get_keys(None).await?;
             keysets = Some(ks.keysets);
         }
+        let mut keysetinfo = client.get_keysetids().await?.keysets;
+        keysetinfo.retain(|k| k.input_fee_ppk > 0);
 
         if info.is_none() {
             let mi = client.get_info().await?;
@@ -130,6 +133,7 @@ impl Wallet {
             keysets,
             info: info.unwrap(),
             counter: Default::default(),
+            keysetinfo,
         };
 
         this.update_mnmonic(mnemonic, store, records).await?;
@@ -302,7 +306,7 @@ impl Wallet {
     ) -> Result<(), Error> {
         let unit = &token.unit;
         for token in &token.token {
-            let ps = self
+            let (ps, _fess) = self
                 .receive_token(token, unit.as_ref().map(|s| s.as_str()), store.clone())
                 .await?;
             proofs.extend(ps);
@@ -316,11 +320,12 @@ impl Wallet {
         token: &MintProofs,
         unit: Option<&str>,
         store: impl RecordStore,
-    ) -> Result<ProofsExtended, Error> {
+    ) -> Result<(ProofsExtended, u64), Error> {
         let mut ps = vec![];
+        let mut fees = 0;
 
         if token.proofs.is_empty() {
-            return Ok(ps);
+            return Ok((ps, fees));
         }
 
         if token.mint.as_str() != self.client.url.as_str() {
@@ -329,8 +334,19 @@ impl Wallet {
 
         let amount = token.proofs.sum();
         if amount.to_u64() <= 0 {
-            return Ok(ps);
+            return Ok((ps, fees));
         }
+
+        if !self.keysetinfo.is_empty() {
+            let mut sum_fee = 0;
+            for _p in &token.proofs {
+                let input_fee_ppk = self.keysetinfo.last().unwrap().input_fee_ppk;
+                sum_fee += input_fee_ppk;
+            }
+            fees = (sum_fee + 999) / 1000;
+        }
+
+        // println!("The receive fees is {:?}", fees);
 
         let mut lock = self.counter.maybe_lock().await;
         let mut counter = lock.start_count(unit, &self.keysets)?;
@@ -344,7 +360,7 @@ impl Wallet {
         let (outputs, swap_response) = try_to_call_swap(
             self.client(),
             &token.proofs,
-            amount,
+            amount - fees.into(),
             0.into(),
             0.into(),
             &mut counter,
@@ -363,7 +379,10 @@ impl Wallet {
             &counter.keyset().keys,
         )?;
 
-        Ok(ps.into_extended_with_unit(Some(counter.keyset().unit.as_str())))
+        Ok((
+            ps.into_extended_with_unit(Some(counter.keyset().unit.as_str())),
+            fees,
+        ))
     }
 
     /// Send: proofs select should do by caller, if not need swap should't call this
@@ -388,9 +407,24 @@ impl Wallet {
     ) -> Result<SplitProofsExtended, Error> {
         let amount_available = proofs.sum();
 
-        if amount_available < amount {
+        let mut fees = 0;
+        if !self.keysetinfo.is_empty() {
+            let mut sum_fee = 0;
+            for _p in proofs.as_slice() {
+                let input_fee_ppk = self.keysetinfo.last().unwrap().input_fee_ppk;
+                sum_fee += input_fee_ppk;
+            }
+            fees = (sum_fee + 999) / 1000;
+        }
+        // println!("the send fee is {:?}", fees);
+
+        if amount_available < amount + fees.into()  {
             return Err(Error::insufficant_funds());
         }
+
+        // if amount_available < amount {
+        //     return Err(Error::insufficant_funds());
+        // }
 
         // no need to split, buts could use to merge many small proofs to large 2^N proofs
         // if amount_available.eq(&amount)
@@ -407,7 +441,8 @@ impl Wallet {
         let mut lock = self.counter.maybe_lock().await;
         let mut counter = lock.start_count(currency_unit, &self.keysets)?;
 
-        let amount_to_keep = amount_available - amount;
+        // let amount_to_keep = amount_available - amount;
+        let amount_to_keep = amount_available - amount - fees.into();
 
         // let outputs =
         //     PreMintSecretsHyper::split_amount2(amount_to_keep, amount, denomination, &mut counter)?;

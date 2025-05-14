@@ -617,6 +617,7 @@ pub mod tests {
             info: None,
             time: unixtime_ms(),
             amount: 1,
+            fee: None,
             mint: MINT_URL.to_string(),
             unit: None,
             token,

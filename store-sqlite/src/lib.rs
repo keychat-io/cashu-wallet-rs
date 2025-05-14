@@ -201,6 +201,10 @@ macro_rules! transaction_from_row {
         let token = $row.get::<'_, String, _>(7);
         let mint = $row.get::<'_, String, _>(8);
         let unit = $row.get::<'_, Option<String>, _>(9);
+        let fee = $row
+            .get::<'_, Option<i64>, _>(10)
+            .map(|i| u64::try_from(i))
+            .transpose()?;
 
         match kind {
             TransactionKind::Cashu => {
@@ -214,6 +218,7 @@ macro_rules! transaction_from_row {
                     token,
                     mint,
                     unit,
+                    fee,
                 };
 
                 tx.into()
@@ -229,10 +234,11 @@ macro_rules! transaction_from_row {
                     pr: token,
                     mint,
                     unit,
-                    fee: $row
-                        .get::<'_, Option<i64>, _>(10)
-                        .map(|i| u64::try_from(i))
-                        .transpose()?,
+                    fee,
+                    // fee: $row
+                    //     .get::<'_, Option<i64>, _>(10)
+                    //     .map(|i| u64::try_from(i))
+                    //     .transpose()?,
                 };
 
                 tx.into()
@@ -625,6 +631,7 @@ impl UnitedStore for LitePool {
             tx.status(),
             tx.direction()
         );
+        // println!("add_transaction fees is {:?}", tx.fee());
 
         let ts = tx.time() as i64;
 

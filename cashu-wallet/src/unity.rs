@@ -2,6 +2,7 @@ pub use crate::wallet::MintUrl as Url;
 pub use cashu;
 use cashu::nuts::nut00;
 use cashu::nuts::nut05;
+use cashu::nuts::KeySetInfo;
 pub use url::ParseError;
 
 use std::collections::BTreeMap;
@@ -412,7 +413,8 @@ where
 
             let wallet = self.get_wallet(mint_url)?;
 
-            let ps = wallet.receive_token(token, unit, &self.store).await?;
+            let (ps, fees) = wallet.receive_token(token, unit, &self.store).await?;
+            // println!("The receive token fee is {:?}", fees);
             let ps = ps.into_extended_with_unit(unit);
             self.store.add_proofs(&mint_url, &ps).await?;
 
@@ -429,6 +431,7 @@ where
                 TransactionDirection::In,
                 a,
                 mint_url.as_str(),
+                Some(fees),
                 &token_str,
                 None,
                 unit,
@@ -493,6 +496,7 @@ where
             TransactionDirection::Out,
             amount,
             mint_url.as_str(),
+            None,
             &cashu_tokens,
             None,
             Some(unit),
@@ -882,6 +886,7 @@ where
         };
 
         let wallet = self.get_wallet(mint_url)?;
+        let keysetinfo = wallet.keysetinfo.clone();
         let form = wallet.request_melt(&invoice, Some(unit), None).await?;
         let mut fee = form.fee_reserve;
         if let Some(q) = quote_response {
@@ -891,10 +896,28 @@ where
         let amount_with_fee = amount + fee.as_ref();
 
         let mut ps = self.store.get_proofs_limit_unit(mint_url, unit).await?;
-        let select = select_send_proofs(amount_with_fee, &mut ps)?;
+        let select = select_send_proofs_with_fee(keysetinfo.clone(), amount_with_fee, &mut ps)?;
+        // let select = select_send_proofs(amount_with_fee, &mut ps)?;
         let ps = &ps[..=select];
 
         let amount_selected = ps.sum();
+
+        // cal the input_fee_ppk
+        let mut sum_fee_ppk = 0;
+        if !keysetinfo.is_empty() {
+            let mut sum_fee = 0;
+            for _p in ps.as_slice() {
+                let input_fee_ppk = wallet.keysetinfo.last().unwrap().input_fee_ppk;
+                sum_fee += input_fee_ppk;
+            }
+            sum_fee_ppk = (sum_fee + 999) / 1000;
+        }
+
+
+        let amount_with_fee = amount_with_fee + sum_fee_ppk;
+
+        // println!("the melt fee is {:?}, amount_selected is {:?}, amount_with_fee is {:?}", sum_fee_ppk, amount_selected, amount_with_fee);
+
 
         // #[rustfmt::skip]
         // println!("{}+{}=>{}/{}", amount, fee, amount_with_fee, amount_selected.to_u64());
@@ -912,6 +935,10 @@ where
         } else {
             SplitProofsGeneric::new(ps.to_owned(), 0)
         };
+
+        // println!("ps2 sum {:?}", ps2.send().sum());
+
+        fee  += sum_fee_ppk.into();
 
         let pm = wallet
             .melt(
@@ -1044,6 +1071,46 @@ pub fn select_send_proofs<E: StdError>(
             a += proof.as_ref().amount.to_u64();
 
             if a >= amount {
+                take = idx;
+                break;
+            }
+        }
+
+        if a < amount {
+            return Err(WalletError::insufficant_funds().into());
+        }
+    }
+
+    Ok(take)
+}
+
+// when select add input_fee_ppk
+#[doc(hidden)]
+pub fn select_send_proofs_with_fee<E: StdError>(
+    keysetinfo: Vec<KeySetInfo>,
+    amount: u64,
+    proofs: &mut Vec<impl AsRef<Proof>>,
+) -> Result<usize, Error<E>> {
+    if amount == 0 {
+        return Err(WalletError::Custom(format_err!("send amount 0")).into());
+    }
+
+    let mut a = 0;
+    let mut take = 0;
+
+    let p = proofs.iter().position(|p| {
+        p.as_ref().amount.to_u64() - (keysetinfo.last().unwrap().input_fee_ppk + 900) / 1000
+            == amount
+    });
+    if let Some(p) = p {
+        proofs.swap(0, p);
+    } else {
+        let mut sum_fee_ppk = 0;
+        for (idx, proof) in proofs.iter().enumerate() {
+            sum_fee_ppk += keysetinfo.last().unwrap().input_fee_ppk;
+            a += proof.as_ref().amount.to_u64();
+
+            if a >= amount + (sum_fee_ppk + 999) / 1000 {
                 take = idx;
                 break;
             }
