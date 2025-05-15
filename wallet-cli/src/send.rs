@@ -50,7 +50,6 @@ impl Opts {
                 merge_proofs_in_database(&wallet, &mint_url, self.limit, Some(unit), ps).await?;
             warn!("merge proofs ok: {}->{}", past, now);
         }
-
         let tx = wallet
             .send_tokens(&mint_url, amount, None, Some(unit), None)
             .await?;
