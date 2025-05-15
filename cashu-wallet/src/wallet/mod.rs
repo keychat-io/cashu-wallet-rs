@@ -338,12 +338,19 @@ impl Wallet {
         }
 
         if !self.keysetinfo.is_empty() {
+            
             let mut sum_fee = 0;
-            for _p in &token.proofs {
-                let input_fee_ppk = self.keysetinfo.last().unwrap().input_fee_ppk;
-                sum_fee += input_fee_ppk;
+            for p in &token.proofs {
+                // get all keyset id, check if is old cashu version
+                if let Some(need_keyset) = self.keysetinfo.iter().find(|i| i.id == p.keyset_id) {
+                    let input_fee_ppk = need_keyset.input_fee_ppk;
+                    sum_fee += input_fee_ppk;
+                }
+                // println!("keyset id {} and amount {}", p.keyset_id, p.amount);
             }
-            fees = (sum_fee + 999) / 1000;
+            if sum_fee > 0 {
+                fees = (sum_fee + 999) / 1000;
+            }
         }
 
         // println!("The receive fees is {:?}", fees);
@@ -407,24 +414,9 @@ impl Wallet {
     ) -> Result<SplitProofsExtended, Error> {
         let amount_available = proofs.sum();
 
-        let mut fees = 0;
-        if !self.keysetinfo.is_empty() {
-            let mut sum_fee = 0;
-            for _p in proofs.as_slice() {
-                let input_fee_ppk = self.keysetinfo.last().unwrap().input_fee_ppk;
-                sum_fee += input_fee_ppk;
-            }
-            fees = (sum_fee + 999) / 1000;
-        }
-        // println!("the send fee is {:?}", fees);
-
-        if amount_available < amount + fees.into()  {
+        if amount_available < amount {
             return Err(Error::insufficant_funds());
         }
-
-        // if amount_available < amount {
-        //     return Err(Error::insufficant_funds());
-        // }
 
         // no need to split, buts could use to merge many small proofs to large 2^N proofs
         // if amount_available.eq(&amount)
@@ -441,8 +433,7 @@ impl Wallet {
         let mut lock = self.counter.maybe_lock().await;
         let mut counter = lock.start_count(currency_unit, &self.keysets)?;
 
-        // let amount_to_keep = amount_available - amount;
-        let amount_to_keep = amount_available - amount - fees.into();
+        let amount_to_keep = amount_available - amount;
 
         // let outputs =
         //     PreMintSecretsHyper::split_amount2(amount_to_keep, amount, denomination, &mut counter)?;

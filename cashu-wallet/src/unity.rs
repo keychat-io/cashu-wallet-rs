@@ -896,22 +896,22 @@ where
         let amount_with_fee = amount + fee.as_ref();
 
         let mut ps = self.store.get_proofs_limit_unit(mint_url, unit).await?;
-        let select = select_send_proofs_with_fee(keysetinfo.clone(), amount_with_fee, &mut ps)?;
+        let (select, sum_fee_ppk) = select_send_proofs_with_fee(&keysetinfo.clone(), amount_with_fee, &mut ps)?;
         // let select = select_send_proofs(amount_with_fee, &mut ps)?;
         let ps = &ps[..=select];
 
         let amount_selected = ps.sum();
 
-        // cal the input_fee_ppk
-        let mut sum_fee_ppk = 0;
-        if !keysetinfo.is_empty() {
-            let mut sum_fee = 0;
-            for _p in ps.as_slice() {
-                let input_fee_ppk = wallet.keysetinfo.last().unwrap().input_fee_ppk;
-                sum_fee += input_fee_ppk;
-            }
-            sum_fee_ppk = (sum_fee + 999) / 1000;
-        }
+        // // cal the input_fee_ppk
+        // let mut sum_fee_ppk = 0;
+        // if !keysetinfo.is_empty() {
+        //     let mut sum_fee = 0;
+        //     for _p in ps.as_slice() {
+        //         let input_fee_ppk = wallet.keysetinfo.last().unwrap().input_fee_ppk;
+        //         sum_fee += input_fee_ppk;
+        //     }
+        //     sum_fee_ppk = (sum_fee + 999) / 1000;
+        // }
 
 
         let amount_with_fee = amount_with_fee + sum_fee_ppk;
@@ -1087,39 +1087,49 @@ pub fn select_send_proofs<E: StdError>(
 // when select add input_fee_ppk
 #[doc(hidden)]
 pub fn select_send_proofs_with_fee<E: StdError>(
-    keysetinfo: Vec<KeySetInfo>,
+    keysetinfo: &Vec<KeySetInfo>,
     amount: u64,
     proofs: &mut Vec<impl AsRef<Proof>>,
-) -> Result<usize, Error<E>> {
+) -> Result<(usize, u64), Error<E>> {
+    let mut sum_fee_ppk = 0;
     if amount == 0 {
         return Err(WalletError::Custom(format_err!("send amount 0")).into());
     }
 
     let mut a = 0;
     let mut take = 0;
+    let mut final_fee = 0;
 
     let p = proofs.iter().position(|p| {
-        p.as_ref().amount.to_u64() - (keysetinfo.last().unwrap().input_fee_ppk + 900) / 1000
-            == amount
+        if let Some(need_keyset) = keysetinfo.iter().find(|i| i.id == p.as_ref().keyset_id) {
+            p.as_ref().amount.to_u64() == amount + (need_keyset.input_fee_ppk + 900) / 1000
+        } else {
+            p.as_ref().amount.to_u64() == amount
+        }
     });
     if let Some(p) = p {
         proofs.swap(0, p);
     } else {
-        let mut sum_fee_ppk = 0;
         for (idx, proof) in proofs.iter().enumerate() {
-            sum_fee_ppk += keysetinfo.last().unwrap().input_fee_ppk;
+            if let Some(need_keyset) = keysetinfo.iter().find(|i| i.id == proof.as_ref().keyset_id) {
+                let input_fee_ppk = need_keyset.input_fee_ppk;
+                sum_fee_ppk += input_fee_ppk;
+            }
             a += proof.as_ref().amount.to_u64();
 
-            if a >= amount + (sum_fee_ppk + 999) / 1000 {
+            if sum_fee_ppk > 0 {
+                final_fee = (sum_fee_ppk + 999) / 1000;
+            }
+            if a >= amount + final_fee  {
                 take = idx;
                 break;
             }
         }
 
-        if a < amount {
+        if a < amount + final_fee {
             return Err(WalletError::insufficant_funds().into());
         }
     }
 
-    Ok(take)
+    Ok((take, final_fee))
 }
