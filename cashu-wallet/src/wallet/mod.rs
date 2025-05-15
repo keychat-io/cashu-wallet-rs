@@ -93,7 +93,7 @@ pub struct Wallet {
     pub(super) keysets: Vec<KeySet>,
     pub(super) info: MintInfo,
     pub(super) counter: ManagerBox,
-    pub(super) keysetinfo: Vec<KeySetInfo>,
+    pub keysetinfo: Vec<KeySetInfo>,
 }
 
 impl Wallet {
@@ -396,17 +396,19 @@ impl Wallet {
     pub async fn send(
         &self,
         amount: Amount,
+        fee: Amount,
         proofs: impl ProofsHelper + Copy,
         currency_unit: Option<&str>,
         store: impl RecordStore,
     ) -> Result<SplitProofsExtended, Error> {
-        self.send_with_denomination(amount, proofs, 0.into(), currency_unit, store)
+        self.send_with_denomination(amount, fee, proofs, 0.into(), currency_unit, store)
             .await
     }
     /// Send: proofs select should do by caller, if not need swap should't call this
     pub async fn send_with_denomination(
         &self,
         amount: Amount,
+        fee: Amount,
         proofs: impl ProofsHelper + Copy,
         denomination: Amount,
         currency_unit: Option<&str>,
@@ -433,7 +435,7 @@ impl Wallet {
         let mut lock = self.counter.maybe_lock().await;
         let mut counter = lock.start_count(currency_unit, &self.keysets)?;
 
-        let amount_to_keep = amount_available - amount;
+        let amount_to_keep = amount_available - amount - fee;
 
         // let outputs =
         //     PreMintSecretsHyper::split_amount2(amount_to_keep, amount, denomination, &mut counter)?;

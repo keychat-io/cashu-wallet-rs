@@ -469,7 +469,7 @@ where
         let unit = unit.unwrap_or(CURRENCY_UNIT_SAT);
 
         let mut ps = self.store.get_proofs_limit_unit(mint_url, unit).await?;
-        let select = select_send_proofs(amount, &mut ps)?;
+        let (select, sum_fee_ppk) = select_send_proofs_with_fee(&wallet.as_ref().unwrap().keysetinfo, amount, &mut ps)?;
         let pss = &ps[..=select];
 
         let tokens = if pss.sum().to_u64() == amount && allow_skip_split {
@@ -481,7 +481,7 @@ where
             wallet
                 .as_ref()
                 .unwrap()
-                .send(amount.into(), pss, Some(unit), &self.store)
+                .send(amount.into(), sum_fee_ppk.into(), pss, Some(unit), &self.store)
                 .await?
         };
 
@@ -551,12 +551,13 @@ where
         if count_before * denomination < amount {
             let amount = amount - count_before * denomination;
 
-            let select = select_send_proofs(amount, &mut ps)?;
+            let (select, sum_fee_ppk) = select_send_proofs_with_fee(&wallet.keysetinfo, amount, &mut ps)?;
             let pss = &ps[..=select];
 
             let tokens = wallet
                 .send_with_denomination(
                     amount.into(),
+                    sum_fee_ppk.into(),
                     pss,
                     denomination.into(),
                     currency_unit,
@@ -914,7 +915,7 @@ where
         // }
 
 
-        let amount_with_fee = amount_with_fee + sum_fee_ppk;
+        // let amount_with_fee = amount_with_fee + sum_fee_ppk;
 
         // println!("the melt fee is {:?}, amount_selected is {:?}, amount_with_fee is {:?}", sum_fee_ppk, amount_selected, amount_with_fee);
 
@@ -925,9 +926,9 @@ where
         // or depents on nut08?
         // let fee_and_remains = ps.sum() - cashu::Amount::from_sat(amount);
         // or spit fisrt
-        let ps2 = if amount_selected.to_u64() > amount_with_fee {
+        let ps2 = if amount_selected.to_u64() > amount_with_fee + sum_fee_ppk {
             let psnew = wallet
-                .send(amount_with_fee.into(), ps, Some(unit), &self.store)
+                .send(amount_with_fee.into(), sum_fee_ppk.into(), ps, Some(unit), &self.store)
                 .await?;
             self.store.add_proofs(mint_url, &psnew.proofs).await?;
             self.store.delete_proofs(mint_url, ps).await?;
