@@ -928,7 +928,7 @@ where
         // or spit fisrt
         let ps2 = if amount_selected.to_u64() > amount_with_fee + sum_fee_ppk {
             let psnew = wallet
-                .send(amount_with_fee.into(), sum_fee_ppk.into(), ps, Some(unit), &self.store)
+                .send((amount_with_fee + sum_fee_ppk).into(), sum_fee_ppk.into(), ps, Some(unit), &self.store)
                 .await?;
             self.store.add_proofs(mint_url, &psnew.proofs).await?;
             self.store.delete_proofs(mint_url, ps).await?;
@@ -1109,7 +1109,7 @@ pub fn select_send_proofs_with_fee<E: StdError>(
     //         p.as_ref().amount.to_u64() == amount
     //     }
     // });
-    
+
     let p = proofs
         .iter()
         .position(|p| p.as_ref().amount.to_u64() == amount);
