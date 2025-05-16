@@ -27,6 +27,7 @@ impl Opts {
         let mint_url: Url = self.mint.parse()?;
         // wallet.load_mints_from_database().await?;
         wallet.add_mint(mint_url.clone(), false).await?;
+        let keysetinfo = wallet.get_wallet(&mint_url.clone())?.keysetinfo.clone();
 
         let mut amount = self.value;
         let unit = self.unit.as_str();
@@ -38,7 +39,7 @@ impl Opts {
             amount = ps.sum().to_u64();
         }
 
-        let select = cashu_wallet::select_send_proofs(amount, &mut ps)?;
+        let (select, sum_fee_ppk) = cashu_wallet::select_send_proofs_with_fee(&keysetinfo, amount, &mut ps)?;
         if self.limit > 0 && select as u64 + 1 > self.limit {
             warn!(
                 "merge proofs, not exit!!!: {}/{} proofs > {}",
@@ -47,7 +48,7 @@ impl Opts {
                 self.limit
             );
             let (now, past) =
-                merge_proofs_in_database(&wallet, &mint_url, self.limit, Some(unit), ps).await?;
+                merge_proofs_in_database(&wallet, &mint_url, self.limit, sum_fee_ppk, Some(unit), ps).await?;
             warn!("merge proofs ok: {}->{}", past, now);
         }
 
@@ -65,6 +66,7 @@ pub async fn merge_proofs_in_database<S>(
     this: &UnitedWallet<S>,
     mint_url: &cashu_wallet::Url,
     limit: u64,
+    fee: u64,
     unit: Option<&str>,
     mut proofs: Vec<ProofExtended>,
 ) -> Result<(usize, usize), UniError<S::Error>>
@@ -87,7 +89,7 @@ where
             .enumerate()
         {
             let a = chunk.sum();
-            let got = w.send(a.into(), chunk, unit, this.store()).await?;
+            let got = w.send(a.into(), fee.into(), chunk, unit, this.store()).await?;
 
             info!(
                 "merge proofs {}/{}: {}->{}",

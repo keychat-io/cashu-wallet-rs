@@ -1101,13 +1101,19 @@ pub fn select_send_proofs_with_fee<E: StdError>(
     let mut take = 0;
     let mut final_fee = 0;
 
-    let p = proofs.iter().position(|p| {
-        if let Some(need_keyset) = keysetinfo.iter().find(|i| i.id == p.as_ref().keyset_id) {
-            p.as_ref().amount.to_u64() == amount + (need_keyset.input_fee_ppk + 900) / 1000
-        } else {
-            p.as_ref().amount.to_u64() == amount
-        }
-    });
+    // let p = proofs.iter().position(|p| {
+    //     if let Some(_need_keyset) = keysetinfo.iter().find(|i| i.id == p.as_ref().keyset_id) {
+    //         // p.as_ref().amount.to_u64() == amount + (need_keyset.input_fee_ppk + 900) / 1000
+    //         p.as_ref().amount.to_u64() == amount
+    //     } else {
+    //         p.as_ref().amount.to_u64() == amount
+    //     }
+    // });
+    
+    let p = proofs
+        .iter()
+        .position(|p| p.as_ref().amount.to_u64() == amount);
+
     if let Some(p) = p {
         proofs.swap(0, p);
     } else {
