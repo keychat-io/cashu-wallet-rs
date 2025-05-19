@@ -903,43 +903,35 @@ where
 
         let amount_selected = ps.sum();
 
-        // // cal the input_fee_ppk
-        // let mut sum_fee_ppk = 0;
-        // if !keysetinfo.is_empty() {
-        //     let mut sum_fee = 0;
-        //     for _p in ps.as_slice() {
-        //         let input_fee_ppk = wallet.keysetinfo.last().unwrap().input_fee_ppk;
-        //         sum_fee += input_fee_ppk;
-        //     }
-        //     sum_fee_ppk = (sum_fee + 999) / 1000;
-        // }
-
-
-        // let amount_with_fee = amount_with_fee + sum_fee_ppk;
-
-        // println!("the melt fee is {:?}, amount_selected is {:?}, amount_with_fee is {:?}", sum_fee_ppk, amount_selected, amount_with_fee);
-
-
         // #[rustfmt::skip]
         // println!("{}+{}=>{}/{}", amount, fee, amount_with_fee, amount_selected.to_u64());
 
         // or depents on nut08?
         // let fee_and_remains = ps.sum() - cashu::Amount::from_sat(amount);
         // or spit fisrt
+
+        let mut need_swap = false;
+
         let ps2 = if amount_selected.to_u64() > amount_with_fee + sum_fee_ppk {
+            // becasue melt need fee, so send amount must add sum_fee_ppk
             let psnew = wallet
                 .send((amount_with_fee + sum_fee_ppk).into(), sum_fee_ppk.into(), ps, Some(unit), &self.store)
                 .await?;
             self.store.add_proofs(mint_url, &psnew.proofs).await?;
             self.store.delete_proofs(mint_url, ps).await?;
+            need_swap = true;
             psnew
         } else {
             SplitProofsGeneric::new(ps.to_owned(), 0)
         };
 
-        // println!("ps2 sum {:?}", ps2.send().sum());
-
-        fee  += sum_fee_ppk.into();
+        if need_swap {
+            // sum_fee is ln_fee + swap_fee + melt_fee
+            fee  += (sum_fee_ppk + sum_fee_ppk).into();
+        } else {
+            // sum_fee is ln_fee + melt_fee
+            fee  += sum_fee_ppk.into();
+        }
 
         let pm = wallet
             .melt(
@@ -951,6 +943,7 @@ where
                 &self.store,
             )
             .await?;
+
         if let Some(remain) = pm.change {
             let remain = remain.into_extended_with_unit(Some(unit));
             self.store.add_proofs(mint_url, &remain).await?;

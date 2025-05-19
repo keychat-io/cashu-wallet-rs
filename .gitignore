@@ -3,6 +3,7 @@
 *.redb
 *.sqlite
 *.sqlite-wal
+*.sqlite-shm
 cashu-wallet/logs
 cashu-wallet/src/bridge_generated.io.rs
 Cargo.lock
