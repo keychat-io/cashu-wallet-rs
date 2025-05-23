@@ -16,6 +16,7 @@ pub enum TransactionStatus {
 pub enum TransactionDirection {
     In,
     Out,
+    Split,
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]

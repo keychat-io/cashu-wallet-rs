@@ -551,12 +551,19 @@ where
         if count_before * denomination < amount {
             let amount = amount - count_before * denomination;
 
-            let (select, sum_fee_ppk) = select_send_proofs_with_fee(&wallet.keysetinfo, amount, &mut ps)?;
-            let pss = &ps[..=select];
+            // if amount == ps.sum, so do not need select proofs
+            let (pss, mut sum_fee_ppk) = if amount < ps.sum().to_u64() {
+                let (select, fee) = select_send_proofs_with_fee(&wallet.keysetinfo, amount, &mut ps)?;
+                (&ps[..=select], fee)
+            } else {
+                (&ps[..], 1)
+            };
+            // make sure fee is not 0
+            sum_fee_ppk = sum_fee_ppk.max(1);
 
             let tokens = wallet
                 .send_with_denomination(
-                    amount.into(),
+                    (amount - sum_fee_ppk).into(),
                     sum_fee_ppk.into(),
                     pss,
                     denomination.into(),
@@ -573,6 +580,22 @@ where
                     count_splits += 1;
                 }
             }
+
+            // store a swap tx to txs_bill
+            let cashu_tokens =
+            Wallet::proofs_to_token(tokens.send(), mint_url.clone(), None, currency_unit, true)?;
+            let tx: Transaction = CashuTransaction::new(
+                TransactionStatus::Success,
+                TransactionDirection::Split,
+                amount,
+                mint_url.as_str(),
+                Some(sum_fee_ppk),
+                &cashu_tokens,
+                None,
+                currency_unit,
+            )
+            .into();
+            self.store.add_transaction(&tx).await?;
         }
 
         Ok(count_before + count_splits)
