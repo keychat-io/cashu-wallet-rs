@@ -39,7 +39,8 @@ impl Opts {
             amount = ps.sum().to_u64();
         }
 
-        let (select, sum_fee_ppk) = cashu_wallet::select_send_proofs_with_fee(&keysetinfo, amount, &mut ps)?;
+        let (select, sum_fee_ppk) =
+            cashu_wallet::select_send_proofs_with_fee(&keysetinfo, amount, &mut ps)?;
         if self.limit > 0 && select as u64 + 1 > self.limit {
             warn!(
                 "merge proofs, not exit!!!: {}/{} proofs > {}",
@@ -47,8 +48,15 @@ impl Opts {
                 ps.len(),
                 self.limit
             );
-            let (now, past) =
-                merge_proofs_in_database(&wallet, &mint_url, self.limit, sum_fee_ppk, Some(unit), ps).await?;
+            let (now, past) = merge_proofs_in_database(
+                &wallet,
+                &mint_url,
+                self.limit,
+                sum_fee_ppk,
+                Some(unit),
+                ps,
+            )
+            .await?;
             warn!("merge proofs ok: {}->{}", past, now);
         }
 
@@ -89,7 +97,9 @@ where
             .enumerate()
         {
             let a = chunk.sum();
-            let got = w.send(a.into(), fee.into(), chunk, unit, this.store()).await?;
+            let got = w
+                .send(a.into(), fee.into(), chunk, unit, this.store())
+                .await?;
 
             info!(
                 "merge proofs {}/{}: {}->{}",

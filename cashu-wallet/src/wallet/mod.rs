@@ -338,7 +338,6 @@ impl Wallet {
         }
 
         if !self.keysetinfo.is_empty() {
-            
             let mut sum_fee = 0;
             for p in &token.proofs {
                 // get all keyset id, check if is old cashu version

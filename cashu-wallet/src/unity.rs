@@ -469,7 +469,8 @@ where
         let unit = unit.unwrap_or(CURRENCY_UNIT_SAT);
 
         let mut ps = self.store.get_proofs_limit_unit(mint_url, unit).await?;
-        let (select, sum_fee_ppk) = select_send_proofs_with_fee(&wallet.as_ref().unwrap().keysetinfo, amount, &mut ps)?;
+        let (select, sum_fee_ppk) =
+            select_send_proofs_with_fee(&wallet.as_ref().unwrap().keysetinfo, amount, &mut ps)?;
         let pss = &ps[..=select];
 
         let tokens = if pss.sum().to_u64() == amount && allow_skip_split {
@@ -481,7 +482,13 @@ where
             wallet
                 .as_ref()
                 .unwrap()
-                .send(amount.into(), sum_fee_ppk.into(), pss, Some(unit), &self.store)
+                .send(
+                    amount.into(),
+                    sum_fee_ppk.into(),
+                    pss,
+                    Some(unit),
+                    &self.store,
+                )
                 .await?
         };
 
@@ -552,14 +559,29 @@ where
             let amount = amount - count_before * denomination;
 
             // if amount == ps.sum, so do not need select proofs
-            let (pss, mut sum_fee_ppk) = if amount < ps.sum().to_u64() {
-                let (select, fee) = select_send_proofs_with_fee(&wallet.keysetinfo, amount, &mut ps)?;
+            let (pss, sum_fee_ppk) = if amount < ps.sum().to_u64() {
+                let (select, fee) =
+                    select_send_proofs_with_fee(&wallet.keysetinfo, amount, &mut ps)?;
                 (&ps[..=select], fee)
             } else {
-                (&ps[..], 1)
+                let mut sum_fee_ppk = 0;
+                for (_, proof) in ps.iter().enumerate() {
+                    if let Some(need_keyset) = &wallet
+                        .keysetinfo
+                        .iter()
+                        .find(|i| i.id == proof.as_ref().keyset_id)
+                    {
+                        let input_fee_ppk = need_keyset.input_fee_ppk;
+                        sum_fee_ppk += input_fee_ppk;
+                    }
+                }
+                let final_fee = if sum_fee_ppk > 0 {
+                    (sum_fee_ppk + 999) / 1000
+                } else {
+                    0
+                };
+                (&ps[..], final_fee)
             };
-            // make sure fee is not 0
-            sum_fee_ppk = sum_fee_ppk.max(1);
 
             let tokens = wallet
                 .send_with_denomination(
@@ -582,8 +604,13 @@ where
             }
 
             // store a swap tx to txs_bill
-            let cashu_tokens =
-            Wallet::proofs_to_token(tokens.send(), mint_url.clone(), None, currency_unit, true)?;
+            let cashu_tokens = Wallet::proofs_to_token(
+                tokens.send(),
+                mint_url.clone(),
+                None,
+                currency_unit,
+                true,
+            )?;
             let tx: Transaction = CashuTransaction::new(
                 TransactionStatus::Success,
                 TransactionDirection::Split,
@@ -595,7 +622,8 @@ where
                 currency_unit,
             )
             .into();
-            self.store.add_transaction(&tx).await?;
+            // will add to db late due to web have not prepare
+            // self.store.add_transaction(&tx).await?;
         }
 
         Ok(count_before + count_splits)
@@ -920,7 +948,8 @@ where
         let amount_with_fee = amount + fee.as_ref();
 
         let mut ps = self.store.get_proofs_limit_unit(mint_url, unit).await?;
-        let (select, sum_fee_ppk) = select_send_proofs_with_fee(&keysetinfo.clone(), amount_with_fee, &mut ps)?;
+        let (select, sum_fee_ppk) =
+            select_send_proofs_with_fee(&keysetinfo.clone(), amount_with_fee, &mut ps)?;
         // let select = select_send_proofs(amount_with_fee, &mut ps)?;
         let ps = &ps[..=select];
 
@@ -938,7 +967,13 @@ where
         let ps2 = if amount_selected.to_u64() > amount_with_fee + sum_fee_ppk {
             // becasue melt need fee, so send amount must add sum_fee_ppk
             let psnew = wallet
-                .send((amount_with_fee + sum_fee_ppk).into(), sum_fee_ppk.into(), ps, Some(unit), &self.store)
+                .send(
+                    (amount_with_fee + sum_fee_ppk).into(),
+                    sum_fee_ppk.into(),
+                    ps,
+                    Some(unit),
+                    &self.store,
+                )
                 .await?;
             self.store.add_proofs(mint_url, &psnew.proofs).await?;
             self.store.delete_proofs(mint_url, ps).await?;
@@ -950,10 +985,10 @@ where
 
         if need_swap {
             // sum_fee is ln_fee + swap_fee + melt_fee
-            fee  += (sum_fee_ppk + sum_fee_ppk).into();
+            fee += (sum_fee_ppk + sum_fee_ppk).into();
         } else {
             // sum_fee is ln_fee + melt_fee
-            fee  += sum_fee_ppk.into();
+            fee += sum_fee_ppk.into();
         }
 
         let pm = wallet
@@ -1134,7 +1169,8 @@ pub fn select_send_proofs_with_fee<E: StdError>(
         proofs.swap(0, p);
     } else {
         for (idx, proof) in proofs.iter().enumerate() {
-            if let Some(need_keyset) = keysetinfo.iter().find(|i| i.id == proof.as_ref().keyset_id) {
+            if let Some(need_keyset) = keysetinfo.iter().find(|i| i.id == proof.as_ref().keyset_id)
+            {
                 let input_fee_ppk = need_keyset.input_fee_ppk;
                 sum_fee_ppk += input_fee_ppk;
             }
@@ -1143,7 +1179,7 @@ pub fn select_send_proofs_with_fee<E: StdError>(
             if sum_fee_ppk > 0 {
                 final_fee = (sum_fee_ppk + 999) / 1000;
             }
-            if a >= amount + final_fee  {
+            if a >= amount + final_fee {
                 take = idx;
                 break;
             }
