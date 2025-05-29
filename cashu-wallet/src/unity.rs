@@ -589,9 +589,9 @@ where
                 pss.sum()
             );
             // because send will need fee, so amount must less than pss.sum()
-            if sum_fee_ppk == 0 && amount == pss.sum().to_u64() {
-                sum_fee_ppk = 1;
-            }
+            // if sum_fee_ppk == 0 && amount == pss.sum().to_u64() {
+            //     sum_fee_ppk = 1;
+            // }
 
             let tokens = wallet
                 .send_with_denomination(
