@@ -166,7 +166,7 @@ where
     pub fn get_wallet(&self, url: &Url) -> Result<Arc<Wallet>, Error<S::Error>> {
         let wallet = self
             .get_wallet_optional(url)?
-            .ok_or_else(|| format_err!("mint_url notfound"))?;
+            .ok_or_else(|| format_err!("mint_url not found"))?;
 
         Ok(wallet)
     }
@@ -559,7 +559,7 @@ where
             let amount = amount - count_before * denomination;
 
             // if amount == ps.sum, so do not need select proofs
-            let (pss, sum_fee_ppk) = if amount < ps.sum().to_u64() {
+            let (pss, mut sum_fee_ppk) = if amount < ps.sum().to_u64() {
                 let (select, fee) =
                     select_send_proofs_with_fee(&wallet.keysetinfo, amount, &mut ps)?;
                 (&ps[..=select], fee)
@@ -582,6 +582,16 @@ where
                 };
                 (&ps[..], final_fee)
             };
+            debug!(
+                "sum_fee_ppk is {:?}, amout is {:?}, pss sum is {:?} ",
+                sum_fee_ppk,
+                amount,
+                pss.sum()
+            );
+            // because send will need fee, so amount must less than pss.sum()
+            if sum_fee_ppk == 0 && amount == pss.sum().to_u64() {
+                sum_fee_ppk = 1;
+            }
 
             let tokens = wallet
                 .send_with_denomination(
@@ -1166,7 +1176,18 @@ pub fn select_send_proofs_with_fee<E: StdError>(
         .position(|p| p.as_ref().amount.to_u64() == amount);
 
     if let Some(p) = p {
+        // this must condsider final_fee
         proofs.swap(0, p);
+        if let Some(need_keyset) = keysetinfo
+            .iter()
+            .find(|i| i.id == proofs[0].as_ref().keyset_id)
+        {
+            let input_fee_ppk = need_keyset.input_fee_ppk;
+            sum_fee_ppk += input_fee_ppk;
+        }
+        if sum_fee_ppk > 0 {
+            final_fee = (sum_fee_ppk + 999) / 1000;
+        }
     } else {
         for (idx, proof) in proofs.iter().enumerate() {
             if let Some(need_keyset) = keysetinfo.iter().find(|i| i.id == proof.as_ref().keyset_id)
