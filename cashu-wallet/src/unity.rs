@@ -633,7 +633,7 @@ where
             )
             .into();
             // will add to db late due to web have not prepare
-            // self.store.add_transaction(&tx).await?;
+            self.store.add_transaction(&tx).await?;
         }
 
         Ok(count_before + count_splits)
