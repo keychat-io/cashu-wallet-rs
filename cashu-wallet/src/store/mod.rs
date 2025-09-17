@@ -69,7 +69,7 @@ pub trait UnitedStore {
     async fn add_counter(&self, record: &Record) -> Result<(), Self::Error>;
     async fn delete_counters(&self, mint_url: &Url) -> Result<(), Self::Error>;
     async fn get_counters(&self, mint_url: &Url, pubkey: &str) -> Result<Vec<Record>, Self::Error>;
-    // async fn get_all_counters(&self) -> Result<Map<String, Vec<Record>>, Self::Error>;
+    async fn get_all_counters(&self) -> Result<Vec<Record>, Self::Error>;
     // proofs
     async fn delete_proofs(
         &self,
@@ -171,6 +171,9 @@ where
     }
     async fn get_counters(&self, mint_url: &Url, pubkey: &str) -> Result<Vec<Record>, Self::Error> {
         self.as_ref().get_counters(mint_url, pubkey).await
+    }
+    async fn get_all_counters(&self) -> Result<Vec<Record>, Self::Error> {
+        self.as_ref().get_all_counters().await
     }
     async fn delete_proofs(
         &self,

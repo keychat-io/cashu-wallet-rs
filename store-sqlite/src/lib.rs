@@ -362,6 +362,36 @@ impl UnitedStore for LitePool {
 
         Ok(ps)
     }
+
+    async fn get_all_counters(&self) -> Result<Vec<Record>, Self::Error> {
+        let sql = format!(
+            "select mint, keysetid, pubkey, counter, ctime from {};",
+            self.definition_counters()
+        );
+
+        let mut iter = sqlx::query(&sql).fetch(&self.db);
+
+        let mut ps = vec![];
+        while let Some(it) = iter.next().await {
+            let it = it?;
+
+            let p = Record {
+                mint: it.get(0),
+                keysetid: it.get(1),
+                pubkey: it.get(2),
+                counter: it
+                    .get::<'_, String, _>(3)
+                    .parse::<u64>()
+                    .map_err(|e| StoreError::Custom(e.into()))?,
+                ts: u64::try_from(it.get::<'_, i64, _>(4))?,
+            };
+
+            ps.push(p);
+        }
+
+        Ok(ps)
+    }
+
     async fn delete_proofs(
         &self,
         mint_url: &Url,
