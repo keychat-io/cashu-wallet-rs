@@ -4,6 +4,7 @@ resolver = "2"
 default-members = [
   "cashu-wallet",
   "test-cashu",
+  "store-sqlite",
 ]
 members = [
   "cashu-wallet",
